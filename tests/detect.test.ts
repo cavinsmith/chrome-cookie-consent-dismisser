@@ -7,42 +7,45 @@ beforeEach(() => {
 });
 
 describe('classifyLabel', () => {
-  it('classifies accept labels across languages', () => {
+  it('classifies accept labels across 30 languages', () => {
     for (const label of [
-      'Accept all',
-      'Принять все',
-      'Alle akzeptieren',
-      'Tout accepter',
-      'Aceptar todo',
-      'Accetta tutto',
-      'Alles accepteren',
-      'Zaakceptuj wszystkie',
-      'Tümünü kabul et',
-      'すべて同意',
-      '接受全部',
-      '모두 동의',
+      // Germanic / Romance
+      'Accept all', 'Alle akzeptieren', 'Tout accepter', 'Aceptar todo', 'Accetta tutto',
+      'Alles accepteren', 'Aceitar todos', 'Acceptera alla', 'Accepter alle', 'Hyväksy kaikki',
+      // Slavic
+      'Принять все', 'Прийняти все', 'Zaakceptuj wszystkie', 'Přijmout vše', 'Prijať vsetko',
+      'Sprejmi vse', 'Prihvati sve', 'Приемам всички',
+      // Other European
+      'Tümünü kabul et', 'Αποδοχή όλων', 'Osszes elfogadasa', 'Accepta toate',
+      'Priimti visus', 'Piekļaut visiem', 'Nõustun kõigiga',
+      // CJK
+      'すべて同意', '接受全部', '모두 동의',
+      // SE Asia / India
+      'Terima semua', 'Chấp nhận tất cả', 'ยอมรับทั้งหมด', 'सभी स्वीकार करें',
+      // Middle East
+      'קבל הכל', 'قبول الكل', 'پذیرفتن همه',
     ]) {
       expect(classifyLabel(label)?.kind, label).toBe('accept');
     }
   });
 
-  it('classifies reject labels across languages', () => {
+  it('classifies reject labels across 30 languages', () => {
     for (const label of [
-      'Reject all',
-      'Only necessary cookies',
-      'Отклонить все',
-      'Только необходимые',
-      'Alle ablehnen',
-      'Nur notwendige Cookies',
-      'Tout refuser',
-      'Rechazar todo',
-      'Rifiuta tutto',
-      'Alles weigeren',
-      'Odrzuć wszystkie',
-      'Tümünü reddet',
-      'すべて拒否',
-      '全部拒绝',
-      '모두 거부',
+      // Germanic / Romance
+      'Reject all', 'Alle ablehnen', 'Tout refuser', 'Rechazar todo', 'Rifiuta tutto',
+      'Alles weigeren', 'Rejeitar todos', 'Avvisa alla', 'Afvis alle', 'Hylkää kaikki',
+      // Slavic
+      'Отклонить все', 'Відхилити все', 'Odrzuć wszystkie', 'Odmítnout vše', 'Odmietnuť vsetko',
+      'Zavrni vse', 'Odbij sve', 'Отхвърли всички',
+      // Other European
+      'Tümünü reddet', 'Απόρριψη όλων', 'Összes elutasítása', 'Respinge toate',
+      'Atmesti visus', 'Noraidīt visus', 'Keeldu kõigist',
+      // CJK
+      'すべて拒否', '全部拒绝', '모두 거부',
+      // SE Asia / India
+      'Tolak semua', 'Từ chối tất cả', 'ปฏิเสธทั้งหมด', 'सभी अस्वीकार करें',
+      // Middle East
+      'דחה הכל', 'رفض الكل', 'رد کردن همه',
     ]) {
       expect(classifyLabel(label)?.kind, label).toBe('reject');
     }
