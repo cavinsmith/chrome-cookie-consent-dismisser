@@ -78,6 +78,53 @@ export function containsPhrase(text: string, phrase: string): boolean {
   return false;
 }
 
+interface IndexedPhrase {
+  /** Normalised phrase. */
+  text: string;
+  tokens: string[];
+}
+
+interface PhraseIndex {
+  exact: Set<string>;
+  /** Phrases grouped by their first word, so a text only tests what can match. */
+  byFirstWord: Map<string, IndexedPhrase[]>;
+  /** Phrases in scripts without word separators, matched by substring. */
+  cjk: IndexedPhrase[];
+}
+
+/**
+ * Phrase tables are module constants, so their index is built once and kept
+ * for the life of the page. Without it, every button label on a page was
+ * compared against every phrase in five tables: a single detection pass over a
+ * shop's home page cost six seconds.
+ */
+const indexes = new WeakMap<readonly string[], PhraseIndex>();
+
+function indexOf(phrases: readonly string[]): PhraseIndex {
+  const cached = indexes.get(phrases);
+  if (cached) return cached;
+
+  const index: PhraseIndex = { exact: new Set(), byFirstWord: new Map(), cjk: [] };
+  for (const phrase of phrases) {
+    const text = normalize(phrase);
+    if (!text) continue;
+    index.exact.add(text);
+
+    const entry: IndexedPhrase = { text, tokens: tokenize(text) };
+    if (isCjk(text)) {
+      index.cjk.push(entry);
+      continue;
+    }
+    const first = entry.tokens[0]!;
+    const bucket = index.byFirstWord.get(first);
+    if (bucket) bucket.push(entry);
+    else index.byFirstWord.set(first, [entry]);
+  }
+
+  indexes.set(phrases, index);
+  return index;
+}
+
 /**
  * Scores how strongly `text` matches any phrase in `phrases`.
  *
@@ -92,28 +139,49 @@ export function scorePhrases(text: string, phrases: readonly string[]): number {
   const nText = normalize(text);
   if (!nText) return 0;
 
-  let best = 0;
-  for (const phrase of phrases) {
-    const nPhrase = normalize(phrase);
-    if (!nPhrase) continue;
+  const index = indexOf(phrases);
+  let best = index.exact.has(nText) ? 100 + nText.length : 0;
 
-    if (nText === nPhrase) {
-      best = Math.max(best, 100 + nPhrase.length);
-      continue;
-    }
-    // A two- or three-letter word ("no", "ja", "ne") means what the table says
-    // only when it is essentially the whole label. Inside a sentence it is
-    // almost always another language's ordinary word.
-    if (nPhrase.length <= SHORT_PHRASE_LEN && tokenize(nText).length > SHORT_PHRASE_CONTEXT) {
-      continue;
-    }
-    if (containsPhrase(nText, nPhrase)) {
-      const wordCount = tokenize(nText).length;
+  const words = tokenize(nText);
+  const shortAllowed = words.length <= SHORT_PHRASE_CONTEXT;
+
+  for (let i = 0; i < words.length; i++) {
+    const bucket = index.byFirstWord.get(words[i]!);
+    if (!bucket) continue;
+
+    for (const entry of bucket) {
+      if (entry.text === nText) continue; // already scored as an exact match
+      // A two- or three-letter word ("no", "ja", "ne") means what the table
+      // says only when it is essentially the whole label. Inside a sentence it
+      // is almost always another language's ordinary word.
+      if (entry.text.length <= SHORT_PHRASE_LEN && !shortAllowed) continue;
+      if (i + entry.tokens.length > words.length) continue;
+
+      let matched = true;
+      for (let j = 1; j < entry.tokens.length; j++) {
+        if (words[i + j] !== entry.tokens[j]) {
+          matched = false;
+          break;
+        }
+      }
+      if (!matched) continue;
+
       // A label of a handful of words is still a button; an essay is not.
-      const penalty = Math.min(40, Math.max(0, wordCount - tokenize(nPhrase).length) * 4);
-      best = Math.max(best, Math.max(1, nPhrase.length + 20 - penalty));
+      const penalty = Math.min(40, Math.max(0, words.length - entry.tokens.length) * 4);
+      best = Math.max(best, Math.max(1, entry.text.length + 20 - penalty));
     }
   }
+
+  if (index.cjk.length > 0) {
+    const packed = nText.replace(/ /g, '');
+    for (const entry of index.cjk) {
+      const needle = entry.text.replace(/ /g, '');
+      if (!needle || entry.text === nText || !packed.includes(needle)) continue;
+      const penalty = Math.min(40, Math.max(0, words.length - entry.tokens.length) * 4);
+      best = Math.max(best, Math.max(1, entry.text.length + 20 - penalty));
+    }
+  }
+
   return best;
 }
 

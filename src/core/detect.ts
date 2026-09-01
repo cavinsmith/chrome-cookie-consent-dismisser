@@ -514,15 +514,21 @@ export function findCandidates(
   const found: RawCandidate[] = [];
 
   for (const button of collectClickables(root)) {
-    if (isOurUi(button)) continue;
-    if (skip && [...skip].some((c) => c.contains(button))) continue;
-    if (!isVisible(button)) continue;
-    if (containsClickable(button)) continue;
-
+    // Cheapest gates first: the label is a `textContent` read, and almost
+    // every control on a page fails to read like a consent phrase. Layout and
+    // style questions — visibility, the container walk — are only asked about
+    // the handful that survive.
     const label = elementLabel(button);
+    if (!label) continue;
+
     const classified = classifyLabel(label);
     if (!classified) continue;
     if (classified.score < MINIMUM_LABEL_SCORE) continue;
+
+    if (isOurUi(button)) continue;
+    if (skip && [...skip].some((c) => c.contains(button))) continue;
+    if (containsClickable(button)) continue;
+    if (!isVisible(button)) continue;
 
     const container = findConsentContainer(button);
     if (!container) continue;

@@ -112,8 +112,17 @@ export function containsClickable(el: Element): boolean {
   }
 }
 
-/** Every plausibly clickable element inside `root`, capped for safety. */
-export function collectClickables(root: Document | ShadowRoot, limit = 400): Element[] {
+/**
+ * Every plausibly clickable element inside `root`, capped for safety.
+ *
+ * The cap has to be generous: the selector is deliberately wide (anything with
+ * "button" in its class, anything with a `data-testid`), a shop's page holds
+ * thousands of those, and the banner is appended last — with a cap of 400,
+ * wehkamp.nl's consent buttons were never even looked at. The work per element
+ * is a `textContent` read, and `findCandidates` drops everything whose label
+ * cannot be a consent phrase before it does anything expensive.
+ */
+export function collectClickables(root: Document | ShadowRoot, limit = 4000): Element[] {
   let found: Element[];
   try {
     found = Array.from(root.querySelectorAll(CLICKABLE_SELECTOR));
