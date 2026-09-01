@@ -76,6 +76,10 @@ export const ACCEPT_PHRASES: readonly string[] = [
   'ik ga akkoord', 'alles toestaan', 'alle cookies toestaan', 'toestaan', 'begrepen',
   'ja', 'accepteren alle', 'ik accepteer', 'alle cookies toestaan', 'doorgaan',
   'alles toestaan', 'instemmen',
+  'alles aanvaarden', 'alle cookies aanvaarden', 'aanvaarden', 'ik aanvaard',
+  // Imperatives: Dutch buttons say "Accepteer alle cookies", not "accepteren".
+  'accepteer alle cookies', 'accepteer alles', 'accepteer', 'aanvaard alles',
+  'aanvaard alle cookies', 'aanvaard', 'sta alles toe', 'sta alle cookies toe',
   // Swedish
   'acceptera alla', 'godkann alla', 'jag godkanner', 'godkann', 'tillat alla', 'ja',
   'forstod', 'acceptera cookies', 'acceptera alla cookies', 'tillat alla cookies',
@@ -247,6 +251,11 @@ export const REJECT_PHRASES: readonly string[] = [
   'niet akkoord', 'doorgaan zonder accepteren', 'nee bedankt', 'alleen noodzakelijke accepteren',
   'weiger alles', 'ik ga niet akkoord', 'neen', 'alleen functionele', 'alleen verplichte',
   'weiger cookies', 'alleen basis', 'doorgaan zonder instemmen',
+  'ga verder zonder aanvaarden', 'doorgaan zonder aanvaarden',
+  'verder zonder aanvaarden', 'ga verder zonder accepteren', 'niet aanvaarden',
+  // Imperatives, as above.
+  'weiger alle onnodige cookies', 'weiger onnodige cookies', 'weiger alle cookies',
+  'weiger alle', 'weiger', 'wijs alles af', 'wijs af', 'sta alleen noodzakelijke toe',
   // Swedish
   'avvisa alla', 'neka alla', 'endast nodvandiga', 'bara nodvandiga', 'nej tack', 'avvisa',
   'godkann ej', 'endast nodvandiga cookies', 'bar nodvandiga', 'fortsatt utan samtycke',

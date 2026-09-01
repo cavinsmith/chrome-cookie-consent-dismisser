@@ -94,6 +94,24 @@ const CLICKABLE_SELECTOR = [
   '[class*="button" i]',
 ].join(',');
 
+/** Controls that unambiguously are controls, used to spot wrapper elements. */
+const REAL_CONTROL_SELECTOR = 'button,a[href],[role="button"],[role="link"],input';
+
+/**
+ * True when `el` wraps other controls, which makes it a container rather than
+ * a button — `collectClickables` casts a wide net (`[data-testid]`, anything
+ * with "button" in its class), and without this a toolbar or a row of links
+ * would be offered as a single control whose label is every link's text
+ * concatenated.
+ */
+export function containsClickable(el: Element): boolean {
+  try {
+    return el.querySelector(REAL_CONTROL_SELECTOR) !== null;
+  } catch {
+    return false;
+  }
+}
+
 /** Every plausibly clickable element inside `root`, capped for safety. */
 export function collectClickables(root: Document | ShadowRoot, limit = 400): Element[] {
   let found: Element[];
@@ -118,6 +136,50 @@ export function elementLabel(el: Element): string {
   ];
   const text = parts.join(' ').replace(/\s+/g, ' ').trim();
   return text.slice(0, 300);
+}
+
+/** Tags whose text is code or markup, never something the user reads. */
+const CODE_TAGS = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT']);
+
+/**
+ * The text a reader actually sees inside `el`, capped at `cap` characters.
+ *
+ * `textContent` is not usable for sizing a block: CMPs routinely ship their
+ * whole configuration as an inline `<script>` JSON blob, which made one real
+ * banner's body measure 850 000 characters of "text". Reading stops as soon as
+ * `cap` is reached, so this stays cheap on huge documents.
+ */
+export function visibleText(el: Element, cap = 50_000): string {
+  let hasCode = false;
+  try {
+    hasCode = el.querySelector('script,style,template,noscript') !== null;
+  } catch {
+    hasCode = false;
+  }
+  if (!hasCode) {
+    const raw = el.textContent ?? '';
+    return raw.length > cap ? raw.slice(0, cap) : raw;
+  }
+
+  const parts: string[] = [];
+  let length = 0;
+  const visit = (node: Node): void => {
+    if (length >= cap) return;
+    if (node.nodeType === 3) {
+      const value = node.nodeValue ?? '';
+      parts.push(value);
+      length += value.length;
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    if (CODE_TAGS.has((node as Element).tagName)) return;
+    for (const child of Array.from(node.childNodes)) {
+      if (length >= cap) return;
+      visit(child);
+    }
+  };
+  visit(el);
+  return parts.join('').slice(0, cap);
 }
 
 /**

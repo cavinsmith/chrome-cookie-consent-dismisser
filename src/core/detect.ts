@@ -28,8 +28,16 @@ import {
   STRONG_CONSENT_CONTEXT,
   WEAK_CONSENT_CONTEXT,
 } from './phrases.js';
-import { collectClickables, elementLabel, elementSignature, isOurUi, isVisible } from './dom.js';
-import { matchesAny, normalize, scorePhrases } from './text.js';
+import {
+  collectClickables,
+  containsClickable,
+  elementLabel,
+  elementSignature,
+  isOurUi,
+  isVisible,
+  visibleText,
+} from './dom.js';
+import { countPhraseHits, matchesAny, normalize, scorePhrases, tokenize } from './text.js';
 
 export type ButtonKind = 'accept' | 'reject' | 'settings' | 'save';
 export type ContextStrength = 'none' | 'weak' | 'strong';
@@ -67,8 +75,32 @@ export const MINIMUM_THRESHOLD = 3;
 
 /** Longest label still plausible for a button rather than a paragraph. */
 const MAX_LABEL_LEN = 120;
-/** A consent block is a few sentences, not a whole article. */
+/**
+ * How much text a block may hold and still be read as a consent banner.
+ *
+ * The limit exists because an anonymous block is credited purely from its
+ * wording: without it, a page wrapper that mentions cookies once in its footer
+ * would become "the banner" for every button on the page.
+ *
+ * That reasoning does not apply once the block has identified itself some
+ * other way — it names a CMP in its own attributes, it floats above the page,
+ * or the whole document it lives in is a consent frame. Those get the larger
+ * limit, because a real preferences pane with every category expanded runs to
+ * thousands of characters: Fiat's is ~4 900, gaspedaal.nl's overshot the plain
+ * limit by fifty characters, and a OneTrust pane is larger still.
+ */
 const MAX_CONTAINER_TEXT = 4000;
+/** The same, for a block that has identified itself as consent UI. */
+const MAX_NAMED_CONTAINER_TEXT = 40_000;
+/** How long a `isDedicatedConsentFrame` answer is reused, in milliseconds. */
+const FRAME_CACHE_MS = 2000;
+/**
+ * Above this size, an anonymous block must be *about* consent rather than
+ * merely mention it: one more consent term is required per this many
+ * characters. Otherwise any long page with "Cookie policy" in its footer
+ * becomes a banner, and every "OK" button on it becomes a candidate.
+ */
+const DENSE_CONTEXT_FROM = 1500;
 const MIN_CONTAINER_TEXT = 12;
 const MAX_ANCESTOR_WALK = 15;
 
@@ -88,7 +120,10 @@ export function classifyLabel(label: string): Classification | null {
     kind,
     score,
     exact: score >= 100,
-    generic,
+    // A reject label is only "generic" when it is a bare word such as "No":
+    // "Continue without accepting" contains the generic word "continue" but
+    // says exactly one thing, and should not need strong context to count.
+    generic: kind === 'reject' ? tokenize(normalize(text)).length < 2 : generic,
   });
 
   const reject = scorePhrases(text, REJECT_PHRASES);
@@ -140,6 +175,35 @@ export function isOverlay(el: Element): boolean {
   return position === 'fixed' || position === 'sticky';
 }
 
+const frameCache = new WeakMap<Document, { value: boolean; at: number }>();
+
+/**
+ * True when `doc` is a sub-frame whose entire content is a consent UI — the
+ * shape every iframe-hosted CMP takes (Fiat and the other Stellantis sites
+ * load theirs from `cookielaw.emea.fcagroup.com`).
+ *
+ * Inside such a frame nothing needs to look like an overlay: the *frame* is
+ * the overlay, and its wrappers are plain, unnamed `<div>`s. The answer is
+ * cached briefly because it is asked once per candidate button.
+ */
+export function isDedicatedConsentFrame(doc: Document): boolean {
+  const win = doc.defaultView;
+  if (!win || win.top === win) return false;
+
+  const now = Date.now();
+  const cached = frameCache.get(doc);
+  if (cached && now - cached.at < FRAME_CACHE_MS) return cached.value;
+
+  const body = doc.body;
+  let value = false;
+  if (body) {
+    const text = visibleText(body, MAX_NAMED_CONTAINER_TEXT + 1);
+    value = text.length <= MAX_NAMED_CONTAINER_TEXT && evaluateContext(text) === 'strong';
+  }
+  frameCache.set(doc, { value, at: now });
+  return value;
+}
+
 /** Crosses shadow boundaries on the way up. */
 function parentOf(node: Element): Element | null {
   if (node.parentElement) return node.parentElement;
@@ -166,6 +230,9 @@ export function findConsentContainer(button: Element): ConsentContainer | null {
   let depth = 0;
   let best: ConsentContainer | null = null;
 
+  const doc = button.ownerDocument;
+  const inConsentFrame = doc ? isDedicatedConsentFrame(doc) : false;
+
   const selfLabel = elementLabel(button);
   const selfStrength = evaluateContext(selfLabel);
   const selfContext = selfStrength !== 'none' || hasConsentSignature(button);
@@ -174,12 +241,20 @@ export function findConsentContainer(button: Element): ConsentContainer | null {
     const tag = node.tagName;
     if (tag === 'BODY' || tag === 'HTML') break;
 
-    const text = node.textContent ?? '';
-    if (text.length <= MAX_CONTAINER_TEXT) {
+    const signature = hasConsentSignature(node);
+    const identified = signature || inConsentFrame || isOverlay(node);
+    const limit = identified ? MAX_NAMED_CONTAINER_TEXT : MAX_CONTAINER_TEXT;
+    const text = visibleText(node, limit + 1);
+    if (text.length <= limit) {
       const longEnough = text.length >= MIN_CONTAINER_TEXT;
       const strength = evaluateContext(text);
-      const signature = hasConsentSignature(node);
       const contextual = strength !== 'none' || signature;
+
+      if (contextual && !identified && !isDenseEnough(text, strength)) {
+        node = parentOf(node);
+        depth++;
+        continue;
+      }
 
       if (contextual && (longEnough || selfContext)) {
         const effective: ContextStrength = signature && strength === 'none' ? 'weak' : strength;
@@ -199,6 +274,19 @@ export function findConsentContainer(button: Element): ConsentContainer | null {
     return { element: button.parentElement, strength: selfStrength };
   }
   return null;
+}
+
+/**
+ * True when consent vocabulary runs through the whole block rather than
+ * appearing once. Short blocks are exempt: a two-line banner says "cookies"
+ * once and that is enough.
+ */
+function isDenseEnough(text: string, strength: ContextStrength): boolean {
+  if (strength === 'none') return false;
+  if (text.length <= DENSE_CONTEXT_FROM) return true;
+  const needed = Math.ceil(text.length / DENSE_CONTEXT_FROM);
+  const phrases = strength === 'strong' ? STRONG_CONSENT_CONTEXT : WEAK_CONSENT_CONTEXT;
+  return countPhraseHits(text, phrases, needed) >= needed;
 }
 
 function rank(strength: ContextStrength): number {
@@ -241,6 +329,7 @@ export function findCandidates(
     if (isOurUi(button)) continue;
     if (skip && [...skip].some((c) => c.contains(button))) continue;
     if (!isVisible(button)) continue;
+    if (containsClickable(button)) continue;
 
     const label = elementLabel(button);
     const classified = classifyLabel(label);
@@ -300,8 +389,8 @@ export function findOrphanBanners(root: Document | ShadowRoot, limit = 5): Eleme
     if (isOurUi(el)) continue;
     if (out.some((existing) => existing.contains(el))) continue;
 
-    const text = el.textContent ?? '';
-    if (text.length < MIN_CONTAINER_TEXT || text.length > MAX_CONTAINER_TEXT) continue;
+    const text = visibleText(el, MAX_NAMED_CONTAINER_TEXT + 1);
+    if (text.length < MIN_CONTAINER_TEXT || text.length > MAX_NAMED_CONTAINER_TEXT) continue;
     if (evaluateContext(text) !== 'strong') continue;
     if (!hasConsentSignature(el)) continue;
     if (!isOverlay(el)) continue;
