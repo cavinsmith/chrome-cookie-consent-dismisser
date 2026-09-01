@@ -255,3 +255,13 @@ describe('a page that swallows clicks', () => {
     expect(dismissed).toBe(0);
   });
 });
+
+describe('what happened on a page', () => {
+  it('marks the document when a banner is answered', async () => {
+    await bootAndAsk();
+
+    promptButton('Close banner').click();
+
+    expect(document.documentElement.getAttribute('data-cbac-acted')).toBe('clicked:heuristic');
+  });
+});

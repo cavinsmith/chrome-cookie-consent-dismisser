@@ -134,8 +134,20 @@ export function elementLabel(el: Element): string {
     el.getAttribute('title') ?? '',
     el.getAttribute('value') ?? '',
   ];
-  const text = parts.join(' ').replace(/\s+/g, ' ').trim();
-  return text.slice(0, 300);
+
+  // A control usually repeats its own text in `title` or `aria-label`, and
+  // joining them blindly produced labels like "Ik ga akkoord Ik ga akkoord",
+  // which no longer match a phrase exactly — the difference between closing a
+  // banner and asking the user about it. Only parts that add something are
+  // kept, so an icon-only button still gets its accessible name.
+  let label = '';
+  for (const part of parts) {
+    const text = part.replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    if (label.toLowerCase().includes(text.toLowerCase())) continue;
+    label = label ? `${label} ${text}` : text;
+  }
+  return label.slice(0, 300);
 }
 
 /** Tags whose text is code or markup, never something the user reads. */
@@ -150,6 +162,23 @@ const CODE_TAGS = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT']);
  * `cap` is reached, so this stays cheap on huge documents.
  */
 export function visibleText(el: Element, cap = 50_000): string {
+  const raw = codeFreeText(el, cap);
+  if (raw.length < cap) return raw;
+
+  // Still too long: the block probably hides most of it. Le Monde's consent
+  // wall carries 40 000 characters of collapsed explanations around 1 600 of
+  // visible text, and measuring the collapsed copy put it out of reach. This
+  // is the expensive reading — it forces layout — so it is only ever taken
+  // when the cheap one has already come out over the caller's limit.
+  const rendered = (el as HTMLElement).innerText;
+  if (typeof rendered === 'string' && rendered.length < raw.length) {
+    return rendered.length > cap ? rendered.slice(0, cap) : rendered;
+  }
+  return raw;
+}
+
+/** `textContent` with script and style payloads left out, capped. */
+function codeFreeText(el: Element, cap: number): string {
   let hasCode = false;
   try {
     hasCode = el.querySelector('script,style,template,noscript') !== null;
@@ -157,8 +186,8 @@ export function visibleText(el: Element, cap = 50_000): string {
     hasCode = false;
   }
   if (!hasCode) {
-    const raw = el.textContent ?? '';
-    return raw.length > cap ? raw.slice(0, cap) : raw;
+    const text = el.textContent ?? '';
+    return text.length > cap ? text.slice(0, cap) : text;
   }
 
   const parts: string[] = [];

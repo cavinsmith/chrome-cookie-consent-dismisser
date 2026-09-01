@@ -119,3 +119,20 @@ describe('unblockScroll', () => {
     expect(unblockScroll(document)).toBe(false);
   });
 });
+
+describe('elementLabel deduplicates repeated parts', () => {
+  it('does not repeat text that the title already carries', () => {
+    document.body.innerHTML = `<a id="a" title="Ik ga akkoord">Ik ga akkoord</a>`;
+    expect(elementLabel(document.getElementById('a')!)).toBe('Ik ga akkoord');
+  });
+
+  it('still names an icon-only control from its aria-label', () => {
+    document.body.innerHTML = `<button id="b" aria-label="Accept all cookies">✓</button>`;
+    expect(elementLabel(document.getElementById('b')!)).toBe('✓ Accept all cookies');
+  });
+
+  it('keeps an aria-label that says something different', () => {
+    document.body.innerHTML = `<button id="c" aria-label="Reject all">No</button>`;
+    expect(elementLabel(document.getElementById('c')!)).toBe('No Reject all');
+  });
+});

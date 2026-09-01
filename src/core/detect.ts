@@ -21,12 +21,15 @@
 import {
   CONSENT_ID_HINTS,
   GENERIC_ACCEPT_PHRASES,
+  LABEL_FILLER_WORDS,
+  NEVER_PHRASES,
   REJECT_PHRASES,
   ACCEPT_PHRASES,
   SAVE_PHRASES,
   SETTINGS_PHRASES,
   STRONG_CONSENT_CONTEXT,
   WEAK_CONSENT_CONTEXT,
+  WITHOUT_WORDS,
 } from './phrases.js';
 import {
   collectClickables,
@@ -84,6 +87,9 @@ export const MINIMUM_THRESHOLD = 3;
  */
 const MINIMUM_LABEL_SCORE = 20;
 
+/** Score given to a refusal recognised by wording rather than by phrase. */
+const REFUSAL_SCORE = 110;
+
 /** Longest label still plausible for a button rather than a paragraph. */
 const MAX_LABEL_LEN = 120;
 /**
@@ -123,8 +129,16 @@ const MAX_ANCESTOR_WALK = 15;
  * first would misfile them.
  */
 export function classifyLabel(label: string): Classification | null {
-  const text = label.trim();
-  if (!text || text.length > MAX_LABEL_LEN) return null;
+  const raw = label.trim();
+  if (!raw || raw.length > MAX_LABEL_LEN) return null;
+  // Sign-in, checkout and other flows that must never be pressed on the user's
+  // behalf, however cookie-flavoured the page around them is.
+  if (matchesAny(raw, NEVER_PHRASES)) return null;
+
+  const variants = labelVariants(raw);
+  const text = variants[0]!;
+  const score = (phrases: readonly string[]): number =>
+    Math.max(...variants.map((variant) => scorePhrases(variant, phrases)));
 
   const generic = matchesAny(text, GENERIC_ACCEPT_PHRASES);
   const build = (kind: ButtonKind, score: number): Classification => ({
@@ -137,18 +151,62 @@ export function classifyLabel(label: string): Classification | null {
     generic: kind === 'reject' ? tokenize(normalize(text)).length < 2 : generic,
   });
 
-  const reject = scorePhrases(text, REJECT_PHRASES);
+  // "Continue without accepting" and its endless variants, before anything
+  // else: they read as an acceptance to every phrase table.
+  if (refusesByWording(text)) return build('reject', REFUSAL_SCORE);
+
+  const reject = score(REJECT_PHRASES);
   if (reject > 0) return build('reject', reject);
 
-  const accept = scorePhrases(text, ACCEPT_PHRASES);
-  const settings = scorePhrases(text, SETTINGS_PHRASES);
-  const save = scorePhrases(text, SAVE_PHRASES);
+  const accept = score(ACCEPT_PHRASES);
+  const settings = score(SETTINGS_PHRASES);
+  const save = score(SAVE_PHRASES);
 
   // "Save settings" is both; the save action is the one that closes the pane.
   if (save > 0 && save >= settings && save >= accept) return build('save', save);
   if (accept > 0 && accept >= settings) return build('accept', accept);
   if (settings > 0) return build('settings', settings);
   return null;
+}
+
+/**
+ * The readings of a label worth scoring: as written, without counter badges,
+ * and without decorative nouns.
+ *
+ * autodoc.nl's button reads "Alle cookies toestaan 1" and manuals.plus's
+ * "Continue with Recommended Cookies" — both are exact phrases wearing a
+ * decoration, and both were scored as loose matches, which cost them the
+ * confidence to act and turned them into questions. Every reading is scored
+ * and the best one wins, so a variant can only ever help.
+ */
+function labelVariants(label: string): string[] {
+  const normalized = normalize(label);
+  const variants = [normalized];
+  const add = (variant: string): void => {
+    if (variant && !variants.includes(variant)) variants.push(variant);
+  };
+
+  const words = tokenize(normalized);
+  add(words.filter((word) => !/^\d+$/.test(word)).join(' '));
+  add(words.filter((word) => !/^\d+$/.test(word) && !LABEL_FILLER_WORDS.includes(word)).join(' '));
+  return variants;
+}
+
+/**
+ * True for "<do something> without <accepting>": a refusal spelled as a
+ * negated acceptance.
+ *
+ * The accept vocabulary is only searched *after* the negation, so "Continue
+ * without registering" — which contains the generic accept word "continue" but
+ * no acceptance after "without" — is not swept up.
+ */
+function refusesByWording(text: string): boolean {
+  const words = tokenize(normalize(text));
+  for (let i = 0; i < words.length - 1; i++) {
+    if (!WITHOUT_WORDS.includes(words[i]!)) continue;
+    if (scorePhrases(words.slice(i + 1).join(' '), ACCEPT_PHRASES) > 0) return true;
+  }
+  return false;
 }
 
 /**
@@ -174,16 +232,70 @@ export function hasConsentSignature(el: Element): boolean {
   return CONSENT_ID_HINTS.some((hint) => sig.includes(hint));
 }
 
-/** True when the element floats above the page rather than sitting in the flow. */
-export function isOverlay(el: Element): boolean {
-  if (el.tagName === 'DIALOG') return true;
-  const role = el.getAttribute('role');
-  if (role === 'dialog' || role === 'alertdialog') return true;
+/**
+ * The same, but also just above the element.
+ *
+ * The block that holds a banner's text is often an unnamed inner `<div>` while
+ * the name — `privacy-cp-wall`, `cookie-banner` — sits on the wrapper around
+ * it, and the container walk stops at the innermost block that talks about
+ * cookies. Looking a few levels up recovers the evidence.
+ */
+export function hasConsentSignatureNearby(el: Element, depth = OVERLAY_ANCESTOR_WALK): boolean {
+  let node: Element | null = el;
+  for (let step = 0; node && step < depth; step++) {
+    const tag = node.tagName;
+    if (tag === 'BODY' || tag === 'HTML') return false;
+    if (hasConsentSignature(node)) return true;
+    node = node.parentElement;
+  }
+  return false;
+}
 
-  const win = el.ownerDocument?.defaultView;
+/** How far up the tree an overlay wrapper is still credited to its content. */
+const OVERLAY_ANCESTOR_WALK = 4;
+
+/**
+ * True when the element floats above the page rather than sitting in the flow.
+ *
+ * The wrapper doing the floating is often a few levels above the block that
+ * holds the text and the buttons — a fixed backdrop containing a static card
+ * is the standard way to build a modal — so a short walk up counts too.
+ */
+export function isOverlay(el: Element): boolean {
+  let node: Element | null = el;
+  for (let depth = 0; node && depth < OVERLAY_ANCESTOR_WALK; depth++) {
+    const tag = node.tagName;
+    if (tag === 'BODY' || tag === 'HTML') return false;
+    if (tag === 'DIALOG') return true;
+
+    const role = node.getAttribute('role');
+    if (role === 'dialog' || role === 'alertdialog') return true;
+    if (node.getAttribute('aria-modal') === 'true') return true;
+
+    const win = node.ownerDocument?.defaultView;
+    if (win) {
+      const position = win.getComputedStyle(node).position;
+      if (position === 'fixed' || position === 'sticky') return true;
+    }
+    node = node.parentElement;
+  }
+  return false;
+}
+
+/**
+ * True when the page cannot be scrolled — the tell-tale of a consent wall,
+ * which locks the body so the notice cannot be scrolled past.
+ */
+export function isScrollLocked(doc: Document): boolean {
+  const win = doc.defaultView;
   if (!win) return false;
-  const position = win.getComputedStyle(el).position;
-  return position === 'fixed' || position === 'sticky';
+  for (const el of [doc.body, doc.documentElement]) {
+    if (!el) continue;
+    const style = win.getComputedStyle(el);
+    if (style.overflow === 'hidden' || style.overflowY === 'hidden') return true;
+    if (style.position === 'fixed') return true;
+  }
+  return false;
 }
 
 const frameCache = new WeakMap<Document, { value: boolean; at: number }>();
@@ -308,18 +420,34 @@ function rank(strength: ContextStrength): number {
  * How much to trust a candidate, 0–9. Fed by independent signals so that no
  * single one can carry a match on its own.
  */
+export interface ConfidenceContext {
+  /** Another consent control of a different kind shares the block. */
+  hasSibling?: boolean;
+  /** The page is scroll-locked, the way a consent wall locks it. */
+  scrollLocked?: boolean;
+}
+
 export function scoreConfidence(
   classification: Classification,
   container: ConsentContainer,
+  context: ConfidenceContext = {},
 ): number {
   let confidence = 0;
   if (container.strength === 'strong') confidence += 3;
   else if (container.strength === 'weak') confidence += 1;
 
-  if (hasConsentSignature(container.element)) confidence += 2;
+  if (hasConsentSignatureNearby(container.element)) confidence += 2;
   if (classification.exact) confidence += 2;
   if (!classification.generic) confidence += 1;
-  if (isOverlay(container.element)) confidence += 1;
+
+  const floats = isOverlay(container.element);
+  if (floats) confidence += 1;
+  // A banner is a row of choices: "accept" next to "reject" or "settings" is
+  // the shape of a consent block and almost nothing else. A lone button in the
+  // same block earns nothing here.
+  if (context.hasSibling) confidence += 1;
+  // A notice that locks the page behind it is a wall, not an inline note.
+  if (context.scrollLocked && floats) confidence += 1;
   return confidence;
 }
 
@@ -328,13 +456,20 @@ export interface DetectOptions {
   skip?: ReadonlySet<Element>;
 }
 
+interface RawCandidate {
+  classification: Classification;
+  button: Element;
+  container: ConsentContainer;
+  label: string;
+}
+
 /** All accept/reject/settings/save candidates inside one root, best first. */
 export function findCandidates(
   root: Document | ShadowRoot,
   options: DetectOptions = {},
 ): Candidate[] {
   const skip = options.skip;
-  const candidates: Candidate[] = [];
+  const found: RawCandidate[] = [];
 
   for (const button of collectClickables(root)) {
     if (isOurUi(button)) continue;
@@ -355,17 +490,39 @@ export function findCandidates(
     // the block it lives in unambiguously talks about cookies.
     if (classified.generic && container.strength !== 'strong') continue;
 
-    const confidence = scoreConfidence(classified, container);
+    found.push({ classification: classified, button, container, label: label.slice(0, 80) });
+  }
+
+  // Which blocks hold more than one kind of consent control — an "accept"
+  // beside a "reject" or a "settings" — is only knowable once every candidate
+  // in the root has been collected, so confidence is scored in a second pass.
+  const kindsPerContainer = new Map<Element, Set<ButtonKind>>();
+  for (const item of found) {
+    const kinds = kindsPerContainer.get(item.container.element) ?? new Set<ButtonKind>();
+    kinds.add(item.classification.kind);
+    kindsPerContainer.set(item.container.element, kinds);
+  }
+
+  const doc = root instanceof Document ? root : root.ownerDocument;
+  const scrollLocked = doc ? isScrollLocked(doc) : false;
+  const candidates: Candidate[] = [];
+
+  for (const item of found) {
+    const kinds = kindsPerContainer.get(item.container.element);
+    const confidence = scoreConfidence(item.classification, item.container, {
+      hasSibling: (kinds?.size ?? 0) > 1,
+      scrollLocked,
+    });
     if (confidence < MINIMUM_THRESHOLD) continue;
 
     candidates.push({
-      kind: classified.kind,
-      button,
-      container: container.element,
-      contextStrength: container.strength,
-      label: label.slice(0, 80),
+      kind: item.classification.kind,
+      button: item.button,
+      container: item.container.element,
+      contextStrength: item.container.strength,
+      label: item.label,
       confidence,
-      score: classified.score + confidence * 10,
+      score: item.classification.score + confidence * 10,
     });
   }
 

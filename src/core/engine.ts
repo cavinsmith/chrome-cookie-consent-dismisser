@@ -17,10 +17,12 @@ import { NECESSARY_PHRASES } from './phrases.js';
 import {
   collectRoots,
   elementLabel,
+  hasLayout,
   hideElement,
   isVisible,
   simulateClick,
   unblockScroll,
+  visibleText,
 } from './dom.js';
 import {
   CONFIDENT_THRESHOLD,
@@ -61,6 +63,9 @@ export interface EngineResult {
 
 const NONE: EngineResult = { action: 'none' };
 
+/** How far above a clicked control a leftover overlay is still swept. */
+const LEFTOVER_WALK = 6;
+
 export class ConsentEngine {
   private readonly doc: Document;
   private readonly opts: EngineOptions & {
@@ -79,6 +84,12 @@ export class ConsentEngine {
   private readonly asked = new WeakSet<Element>();
   /** Rules that produced a click, so their leftovers can be swept later. */
   private readonly firedRules = new Set<string>();
+  /**
+   * Each clicked control together with the wrappers around it, captured at
+   * click time — CMPs routinely detach the button itself, and a detached node
+   * can no longer be walked upwards.
+   */
+  private readonly actedOn: Element[] = [];
 
   constructor(doc: Document, options: EngineOptions) {
     this.doc = doc;
@@ -137,8 +148,51 @@ export class ConsentEngine {
       }
     }
 
+    if (this.sweepLeftovers()) changed = true;
     if (this.opts.unblockScroll && !this.opts.dryRun && unblockScroll(this.doc)) changed = true;
     return changed;
+  }
+
+  /**
+   * Hides an overlay a CMP tore the content out of but left on screen.
+   *
+   * corriere.it leaves its full-page blur behind after the notice is answered,
+   * and the page stays unusable underneath. Only the ancestors of something
+   * this engine actually clicked are considered, so an unrelated overlay — a
+   * site's own loading screen, say — is never touched.
+   */
+  private sweepLeftovers(): boolean {
+    let changed = false;
+    for (const node of this.actedOn) {
+      if (this.hidden.has(node) || !this.isEmptyOverlay(node)) continue;
+      this.hidden.add(node);
+      if (!this.opts.dryRun) hideElement(node);
+      changed = true;
+    }
+    return changed;
+  }
+
+  /** A visible, page-covering layer with nothing left in it. */
+  private isEmptyOverlay(el: Element): boolean {
+    const win = this.doc.defaultView;
+    if (!win || !isVisible(el)) return false;
+
+    const style = win.getComputedStyle(el);
+    if (style.position !== 'fixed' && style.position !== 'sticky') return false;
+
+    // Geometry only counts where there is a layout engine to produce it.
+    if (hasLayout(this.doc)) {
+      const rect = el.getBoundingClientRect();
+      const coversPage =
+        rect.width >= win.innerWidth * 0.6 && rect.height >= win.innerHeight * 0.4;
+      if (!coversPage) return false;
+    }
+
+    if (visibleText(el, 40).trim().length >= 10) return false;
+    for (const control of Array.from(el.querySelectorAll('button,a[href],input'))) {
+      if (isVisible(control)) return false;
+    }
+    return true;
   }
 
   /* -------------------------------------------------------------- */
@@ -365,6 +419,11 @@ export class ConsentEngine {
 
   private act(el: Element, ruleId: string, label?: string): EngineResult {
     this.clicked.add(el);
+    let node: Element | null = el;
+    for (let depth = 0; node && depth < LEFTOVER_WALK; depth++) {
+      this.actedOn.push(node);
+      node = node.parentElement;
+    }
     this.actions++;
     this.firedRules.add(ruleId);
     if (!this.opts.dryRun) simulateClick(el);

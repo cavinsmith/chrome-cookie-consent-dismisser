@@ -362,6 +362,72 @@ export const REJECT_PHRASES: readonly string[] = [
 ];
 
 /** "Show me the toggles" — used to reach a reject button one level deeper. */
+/**
+ * Nouns that decorate a button label without changing what it does.
+ *
+ * "Continue with Recommended Cookies" is the phrase "continue with
+ * recommended" plus a noun; dropping the noun turns a loose match into an
+ * exact one, which is the difference between acting and asking. Labels are
+ * always scored with *and* without these, and the better score wins, so
+ * stripping can only ever help.
+ */
+export const LABEL_FILLER_WORDS: readonly string[] = [
+  'cookies', 'cookie', 'koekjes', 'kekse', 'galletas', 'galetes', 'biscotti', 'biscoitos',
+  'cookieuri', 'kakor', 'kager', 'evasteet', 'sušenky', 'susenky', 'sušienky', 'susienky',
+  'ciasteczka', 'pliki', 'kolacici', 'kolacice', 'piškotki', 'piskotki', 'sutik', 'sutiket',
+  'cerez', 'cerezler', 'slapukai', 'sikfaili', 'kupsised', 'куки', 'файлы', 'файли',
+  'бисквитки', 'колачиће', 'עוגיות', 'كوكيز', 'クッキー', '曲奇', 'cookie的', '쿠키',
+];
+
+/**
+ * Labels that are never a consent control, whatever the page around them says.
+ *
+ * Sign-in buttons are the dangerous case: "Continue with Google" contains the
+ * accept word "continue", and a login page that also carries a cookie notice
+ * gives it all the context it needs. Pressing one starts an OAuth flow.
+ */
+export const NEVER_PHRASES: readonly string[] = [
+  // English
+  'sign in with', 'signin with', 'sign up with', 'signup with', 'log in with', 'login with',
+  'register with', 'continue with google', 'continue with apple', 'continue with facebook',
+  'continue with microsoft', 'continue with github', 'continue with email',
+  'continue with phone', 'continue with sso', 'continue with twitter', 'continue with x',
+  'continue with linkedin', 'continue with amazon', 'continue with slack',
+  'continue as guest', 'continue to checkout', 'continue shopping', 'continue to payment',
+  // Dutch
+  'inloggen met', 'aanmelden met', 'doorgaan met google', 'verder met google',
+  'registreren met', 'doorgaan naar afrekenen', 'verder winkelen',
+  // German
+  'anmelden mit', 'einloggen mit', 'weiter mit google', 'registrieren mit',
+  'weiter zur kasse', 'weiter einkaufen',
+  // French
+  'se connecter avec', 'connexion avec', 'continuer avec google', "s'inscrire avec",
+  'continuer vers le paiement', 'continuer mes achats',
+  // Spanish / Portuguese / Italian
+  'iniciar sesion con', 'continuar con google', 'registrarse con', 'seguir comprando',
+  'entrar com', 'continuar com google', 'continuar a compra',
+  'accedi con', 'continua con google', 'registrati con', 'continua lo shopping',
+  // Russian / Ukrainian
+  'войти через', 'войти с помощью', 'продолжить с google', 'зарегистрироваться через',
+  'перейти к оплате', 'продолжить покупки', 'увійти через',
+];
+
+/**
+ * "Without", in the languages the phrase tables cover.
+ *
+ * CMPs word their reject link as "continue **without** accepting" in endless
+ * small variations — "Doorgaan zonder te accepteren", "Weiter ohne zu
+ * akzeptieren", "Continuer sans accepter" — and an extra filler word is enough
+ * to miss a literal entry. `classifyLabel` pairs these with the accept table
+ * instead, so any wording of the pattern is read as a refusal.
+ */
+export const WITHOUT_WORDS: readonly string[] = [
+  'without', 'zonder', 'sans', 'ohne', 'senza', 'sin', 'sem', 'utan', 'uten', 'uden',
+  'ilman', 'bez', 'brak', 'nelkul', 'fara', 'без', 'бeз', 'без згоди', 'χωρις',
+  'olmadan', 'meden', 'brez', 'ilma', 'be', 'bez piekrisanas', 'ללא', 'بدون',
+  'なしで', '不接受', '不同意', '동의하지',
+];
+
 export const SETTINGS_PHRASES: readonly string[] = [
   'cookie settings', 'cookie preferences', 'manage cookies', 'manage settings',
   'manage preferences', 'manage options', 'manage choices', 'more options', 'options',
@@ -375,7 +441,10 @@ export const SETTINGS_PHRASES: readonly string[] = [
   'configuracio', 'personalitzar',
   'impostazioni', 'personalizza', 'gestisci cookie', 'altre opzioni',
   'definicoes', 'personalizar cookies', 'gerir cookies',
-  'instellingen', 'voorkeuren', 'beheer cookies', 'aanpassen',
+  'instellingen', 'voorkeuren', 'beheer cookies', 'aanpassen', 'cookievoorkeuren',
+  'cookie instellingen', 'privacy instellingen', 'stel uw voorkeuren in',
+  'stel voorkeuren in', 'voorkeuren instellen', 'mijn instellingen beheren',
+  'cookies aanpassen', 'manage my settings', 'manage my choices', 'privacy settings',
   'inställningar', 'hantera cookies', 'anpassa',
   'innstillinger', 'administrer cookies',
   'indstillinger', 'administrer cookies',

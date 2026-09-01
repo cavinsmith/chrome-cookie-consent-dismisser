@@ -53,6 +53,9 @@ function report(action: 'clicked' | 'hidden' | 'ask', ruleId: string, label: str
   state.handled = true;
   state.ruleId = ruleId;
   state.label = label;
+  // A visible trace of what happened, so "no banner" can be told apart from
+  // "banner answered" when looking at a page afterwards.
+  document.documentElement.setAttribute('data-cbac-acted', `${action}:${ruleId}`);
   chrome.runtime
     .sendMessage({ type: 'banner-handled', action, ruleId, label })
     .catch(() => undefined);

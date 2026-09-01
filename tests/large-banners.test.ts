@@ -297,3 +297,64 @@ describe('github.com (its own repository link is not an accept button)', () => {
     expect(findCandidates(document).map((c) => c.kind)).toContain('accept');
   });
 });
+
+describe('lemonde.fr (a wall that hides most of its own text)', () => {
+  it('measures what is on screen, not the collapsed explanations', () => {
+    // 40 000 characters of collapsed copy around 200 of visible text: the
+    // block was too big for any limit until it was measured as rendered.
+    const hidden = '<p>Pourquoi le Monde vous demande d’accepter ces cookies. </p>'.repeat(700);
+    document.body.innerHTML = `
+      <div class="gdpr-lmd-wall" style="position: fixed">
+        <h2>Accéder gratuitement en acceptant l’utilisation de vos données</h2>
+        <p>Le Monde et ses partenaires utilisent des cookies pour personnaliser
+           les publicités et mesurer l’audience.</p>
+        <div class="c-explanation" style="display: none">${hidden}</div>
+        <button id="accept" class="gdpr-lmd-button">Accepter et continuer</button>
+      </div>`;
+    const wall = document.querySelector('.gdpr-lmd-wall') as HTMLElement;
+    // jsdom has no `innerText`; stand in for the rendered reading.
+    Object.defineProperty(wall, 'innerText', {
+      get: () => (wall.querySelector('h2')!.textContent ?? '') + (wall.querySelector('p')!.textContent ?? ''),
+    });
+
+    expect(visibleText(wall, 4001).length).toBeLessThan(4000);
+    expect(findCandidates(document).map((c) => c.kind)).toContain('accept');
+  });
+});
+
+describe('corriere.it (the CMP empties its wall but leaves it up)', () => {
+  it('hides a page-covering layer that has nothing left in it', () => {
+    document.body.innerHTML = `
+      <div class="privacy-cp-wall" style="position: fixed">
+        <div class="inner">
+          <p>Il Corriere usa cookie per personalizzare la pubblicità.</p>
+          <button id="accept">Accetta e continua</button>
+        </div>
+      </div>`;
+    const wall = document.querySelector('.privacy-cp-wall') as HTMLElement;
+    // The site tears its own content down once the notice is answered.
+    document.getElementById('accept')!.addEventListener('click', () => {
+      wall.querySelector('.inner')!.remove();
+    });
+    const engine = new ConsentEngine(document, ACCEPT);
+
+    expect(engine.run().action).toBe('clicked');
+    expect(engine.sweep()).toBe(true);
+    expect(wall.style.display).toBe('none');
+  });
+
+  it('leaves an unrelated overlay alone', () => {
+    document.body.innerHTML = `
+      <div id="loader" style="position: fixed"></div>
+      <div class="cookie-bar" style="position: fixed">
+        <p>We use cookies on this site.</p>
+        <button id="accept">Accept all cookies</button>
+      </div>`;
+    const engine = new ConsentEngine(document, ACCEPT);
+    engine.run();
+    engine.sweep();
+
+    // The site's own loading screen is not ours to hide.
+    expect((document.getElementById('loader') as HTMLElement).style.display).toBe('');
+  });
+});
