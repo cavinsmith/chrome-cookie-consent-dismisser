@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cookie Consent Dismisser</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Cookie Consent Dismisser</h1>
+      <label class="switch" title="Enable everywhere">
+        <input type="checkbox" id="enabled" />
+      </label>
+    </header>
+
+    <section>
+      <h2>Default answer</h2>
+      <div class="segmented" role="group" aria-label="Default answer">
+        <button type="button" id="mode-reject" aria-pressed="false">Reject all</button>
+        <button type="button" id="mode-accept" aria-pressed="false">Accept all</button>
+      </div>
+      <p class="hint" id="mode-hint"></p>
+    </section>
+
+    <section>
+      <h2>This site — <span class="host" id="host">…</span></h2>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="site-enabled" /> Run here</label>
+      </div>
+      <div class="row">
+        <span>Answer here</span>
+        <select id="site-mode">
+          <option value="">Use default</option>
+          <option value="reject">Reject all</option>
+          <option value="accept">Accept all</option>
+        </select>
+      </div>
+      <div class="row">
+        <span>Unsure banners here</span>
+        <select id="site-uncertain">
+          <option value="">Use default</option>
+          <option value="act">Always close</option>
+          <option value="skip">Leave alone</option>
+        </select>
+      </div>
+      <div class="row">
+        <span class="status"><span class="dot" id="dot"></span><span id="page-status">Nothing detected yet</span></span>
+        <button type="button" class="link" id="run-now">Run now</button>
+      </div>
+    </section>
+
+    <footer>
+      <span id="stats">—</span>
+      <button type="button" class="link" id="open-options">All settings</button>
+    </footer>
+    <div id="version" style="text-align: center; font-size: 10px; color: var(--muted); margin-top: 6px;">v—</div>
+
+    <script src="popup.js" defer></script>
+  </body>
+</html>

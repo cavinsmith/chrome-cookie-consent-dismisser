@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cookie Consent Dismisser — Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <h1>Cookie Consent Dismisser</h1>
+    <p class="lede">Answers cookie-consent banners for you, on every site, in every frame.</p>
+
+    <fieldset>
+      <legend>Default answer</legend>
+      <label class="option">
+        <input type="radio" name="mode" value="reject" id="mode-reject" />
+        <span class="text">
+          <strong>Reject all</strong>
+          <span>Refuse everything optional. When a banner hides its reject button, the
+            preferences pane is opened and every optional category switched off.</span>
+        </span>
+      </label>
+      <label class="option">
+        <input type="radio" name="mode" value="accept" id="mode-accept" />
+        <span class="text">
+          <strong>Accept all</strong>
+          <span>Agree to everything. The fastest way to clear banners, at the cost of tracking.</span>
+        </span>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Behaviour</legend>
+      <label class="option">
+        <input type="checkbox" id="enabled" />
+        <span class="text">
+          <strong>Enabled</strong>
+          <span>Master switch. Turning this off stops the extension everywhere.</span>
+        </span>
+      </label>
+      <label class="option">
+        <input type="checkbox" id="askWhenUnsure" />
+        <span class="text">
+          <strong>Ask before acting on unsure banners</strong>
+          <span>When the extension thinks something is a cookie banner but is not
+            confident, show its own prompt asking whether to close it. If this is
+            off, unsure banners are simply left alone.</span>
+        </span>
+      </label>
+      <label class="option">
+        <input type="checkbox" id="fallbackToOpposite" />
+        <span class="text">
+          <strong>Fall back to the opposite answer</strong>
+          <span>If your preferred button does not exist, press the other one instead of
+            leaving the banner up. Off by default — in reject mode this would accept.</span>
+        </span>
+      </label>
+      <label class="option">
+        <input type="checkbox" id="hideIfNoButton" />
+        <span class="text">
+          <strong>Hide banners with no usable button</strong>
+          <span>Cosmetically hides a recognised consent block that offers nothing to click.
+            No consent is recorded either way.</span>
+        </span>
+      </label>
+      <label class="option">
+        <input type="checkbox" id="unblockScroll" />
+        <span class="text">
+          <strong>Restore scrolling</strong>
+          <span>Undo the scroll lock some banners leave on the page after closing.</span>
+        </span>
+      </label>
+      <label class="option">
+        <input type="checkbox" id="debug" />
+        <span class="text">
+          <strong>Debug logging</strong>
+          <span>Log every decision to the page console, prefixed <code>[cookie-autoclose]</code>.</span>
+        </span>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Per-site overrides</legend>
+      <table id="sites-table">
+        <thead>
+          <tr><th>Site</th><th>Run</th><th>Answer</th><th></th></tr>
+        </thead>
+        <tbody id="sites-body"></tbody>
+      </table>
+      <p class="empty" id="sites-empty">No overrides yet — add them from the toolbar popup.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Statistics</legend>
+      <div class="bar">
+        <span id="stats-summary">—</span>
+        <button type="button" id="reset-stats" class="danger">Reset statistics</button>
+      </div>
+      <table>
+        <thead><tr><th>Top sites</th><th>Banners handled</th></tr></thead>
+        <tbody id="stats-body"></tbody>
+      </table>
+    </fieldset>
+
+    <fieldset>
+      <legend>About</legend>
+      <p style="margin: 0 0 8px; font-size: 13px;">
+        Cookie Consent Dismisser v<span id="version">—</span>. This extension does
+        not collect, store, or transmit any personal data. All settings are kept
+        on your device. No remote code, no analytics, no tracking.
+      </p>
+    </fieldset>
+
+    <div class="bar">
+      <span class="saved" id="saved">Saved</span>
+      <button type="button" id="reset-settings" class="danger">Restore defaults</button>
+    </div>
+
+    <script src="options.js" defer></script>
+  </body>
+</html>
