@@ -451,3 +451,28 @@ describe('lone settings controls', () => {
     expect(findCandidates(document).map((c) => c.kind)).toContain('settings');
   });
 });
+
+describe('the "Cookie Preferences" link every site keeps in its footer', () => {
+  it('is not pressed on a page that is not asking anything', () => {
+    // forbes.com, aliexpress.com and zara.com all have one; pressing it opens
+    // a dialog the reader never asked for.
+    document.body.innerHTML = `
+      <footer class="site-footer">
+        <p>© 2026 Example Inc. Read about the cookies we use on this site.</p>
+        <a href="#" id="prefs" class="cookie-preferences">Cookie Preferences</a>
+      </footer>`;
+
+    expect(findCandidates(document)).toEqual([]);
+    expect(new ConsentEngine(document, REJECT).run().action).toBe('none');
+  });
+
+  it('is still pressed when it is the way into a banner', () => {
+    document.body.innerHTML = `
+      <div class="cookie-bar" style="position: fixed">
+        <p>We use cookies on this site to improve your experience.</p>
+        <a href="#" id="prefs">Cookie Preferences</a>
+      </div>`;
+
+    expect(findCandidates(document).map((c) => c.kind)).toContain('settings');
+  });
+});

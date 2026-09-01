@@ -574,12 +574,16 @@ export function findCandidates(
     // A pane that names a CMP in its attributes is exempt, because a
     // preferences pane legitimately holds nothing but "Save".
     if (kind === 'settings' || kind === 'save') {
+      // A settings control is only part of a consent prompt when something is
+      // actually prompting: an accept or a reject beside it, or a block that
+      // floats over the page. Neither of those is true of the "Cookie
+      // Preferences" link every site keeps in its footer — and pressing one of
+      // those opens a dialog the reader never asked for, on a page that was
+      // not asking anything. welt.de's "Einstellungen für Barrierefreiheit"
+      // (accessibility settings, in the page header) failed here too.
       const beside = kinds.has('accept') || kinds.has('reject');
-      const named = hasConsentSignatureNearby(item.container.element);
-      // welt.de's "Einstellungen für Barrierefreiheit" — accessibility
-      // settings, in the page header — passed both of those on the strength of
-      // a neighbouring class name. A preferences pane always says what it is.
-      if (item.container.strength !== 'strong' || !(beside || named)) continue;
+      if (item.container.strength !== 'strong') continue;
+      if (!beside && !isOverlay(item.container.element)) continue;
     }
 
     const confidence = scoreConfidence(item.classification, item.container, {

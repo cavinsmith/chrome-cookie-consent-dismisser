@@ -306,7 +306,7 @@ describe('preference-toggle fallback', () => {
 
   it('leaves a switch labelled "always active" untouched', () => {
     mountHtml(`
-      <div class="cookie-prefs">
+      <div class="cookie-prefs" style="position:fixed">
         <p>Cookie preferences and privacy settings.</p>
         <div><span role="switch" aria-checked="true" aria-label="Essential — always active"></span></div>
         <div><span role="switch" aria-checked="true" aria-label="Marketing" id="sw-marketing"></span></div>
