@@ -54,6 +54,7 @@ export const ACCEPT_PHRASES: readonly string[] = [
   'je consens',
   // Spanish
   'aceptar todo', 'aceptar todas', 'aceptar todas las cookies', 'aceptar', 'acepto',
+  'acepta', 'acepta todo', 'acepta y navega', 'permite', 'permite todo',
   'permitir todo', 'permitir todas', 'estoy de acuerdo', 'de acuerdo', 'entendido',
   'acepto todo', 'aceptar e continuar', 'aceptar cookies', 'si', 'continuar',
   'permitir cookies', 'dar mi consentimiento', 'aceptar la politica',
@@ -69,6 +70,7 @@ export const ACCEPT_PHRASES: readonly string[] = [
   'acconsento a tutto', 'accetta le preferenze',
   // Portuguese
   'aceitar todos', 'aceitar todas', 'aceitar tudo', 'aceitar', 'aceito', 'concordo',
+  'aceita', 'aceita tudo',
   'permitir todos', 'permitir tudo', 'estou de acordo', 'aceitar cookies', 'sim', 'continuar',
   'autorizar tudo', 'aceito todos os cookies', 'dar consentimento', 'aceitar a politica',
   // Dutch
@@ -271,7 +273,10 @@ export const REJECT_PHRASES: readonly string[] = [
   // Finnish
   'hylkaa kaikki', 'hylkaa', 'vain valttamattomat', 'vain valttamattomat evasteet',
   'hylkaa evasteet', 'en hyvaksy', 'kiitos ei', 'jatka ilman suostumusta', 'kieltaa kaikki',
-  'en', 'vain valttamattomat', 'esta evasteet', 'vain vaaditut',
+  // No bare "en" here: Finnish for "I don't" is also Dutch for "and", French
+  // for "in" and Swedish for "a", and it made "Fiets- en wandelroutes" look
+  // like a refusal. The full "en hyvaksy" above carries the meaning.
+  'esta evasteet', 'vain vaaditut',
   // Polish
   'odrzuc wszystkie', 'odrzucam', 'odrzuc', 'nie zgadzam sie', 'tylko niezbedne',
   'tylko konieczne', 'tylko wymagane', 'kontynuuj bez zgody', 'odrzucam wszystkie', 'nie',
@@ -377,6 +382,20 @@ export const LABEL_FILLER_WORDS: readonly string[] = [
   'ciasteczka', 'pliki', 'kolacici', 'kolacice', 'piškotki', 'piskotki', 'sutik', 'sutiket',
   'cerez', 'cerezler', 'slapukai', 'sikfaili', 'kupsised', 'куки', 'файлы', 'файли',
   'бисквитки', 'колачиће', 'עוגיות', 'كوكيز', 'クッキー', '曲奇', 'cookie的', '쿠키',
+];
+
+/**
+ * Words that mean the button sells something.
+ *
+ * "Pay or consent" walls put the refusal behind a subscription — publico.es
+ * offers "Rechaza y suscríbete por 9€/mes", corriere.it "Rifiuta e abbonati" —
+ * and pressing that is not refusing a cookie, it is starting a purchase.
+ */
+export const SUBSCRIPTION_WORDS: readonly string[] = [
+  'subscribe', 'subscription', 'abonnieren', 'abonnement', 'abonniere', 'abo',
+  'abonner', 'abonnez', 'abonnement', 'suscribete', 'suscribirse', 'suscripcion',
+  'abbonati', 'abbonamento', 'assine', 'assinatura', 'prenumerera', 'abonner',
+  'abonnez vous', 'subskrypcja', 'predplatne', 'premium', 'pur abo', 'paywall',
 ];
 
 /**
@@ -631,6 +650,11 @@ export const GENERIC_ACCEPT_PHRASES: readonly string[] = [
   'rozumim', 'rozumiem', 'kontynuuj',
   'tamam', 'anladim', 'ενταξει',
   'rendben', 'am inteles',
+  // A bare "yes" is a button on countless forms, so it only ever counts as
+  // consent inside a block that unambiguously talks about cookies. wp.pl has
+  // one in an unrelated widget that outranked its real accept button.
+  'tak', 'ano', 'da', 'ja', 'oui', 'si', 'sim', 'kylla', 'evet', 'ναι', 'jah',
+  'taip', 'jā', 'igen', 'jah', 'nai', 'ken', 'naam', 'hai', 'ya',
   'forstod', 'fortsett', 'fortsatt',
   'ymmarrettu', 'jatka',
   'razumem', 'nadaljuj',

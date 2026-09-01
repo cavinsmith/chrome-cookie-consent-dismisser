@@ -24,6 +24,7 @@ import {
   LABEL_FILLER_WORDS,
   NEGATION_WORDS,
   NEVER_PHRASES,
+  SUBSCRIPTION_WORDS,
   REJECT_PHRASES,
   ACCEPT_PHRASES,
   SAVE_PHRASES,
@@ -77,16 +78,13 @@ export const CONFIDENT_THRESHOLD = 6;
 /** Below this a candidate is discarded rather than queried. */
 export const MINIMUM_THRESHOLD = 3;
 /**
- * The weakest label match still worth considering.
- *
- * `scorePhrases` pays a phrase's length and penalises every extra word around
- * it, so a short consent word buried in unrelated text lands here: GitHub's
- * own repository link, "chrome-cookie-consent-dismisser", scored 15 on the
- * word "consent" and was offered as an accept button. A real button clears
- * this easily — an exact match scores over 100, and "Cookies aanpassen"
- * (settings) scores 25.
+ * The weakest label match still worth considering — a floor against noise, not
+ * a quality bar. It has to stay low: real buttons carry long labels, and
+ * `scorePhrases` charges four points per surrounding word, so wp.pl's
+ * "Akceptuję i przechodzę do serwisu" scores 13 and its refuse button,
+ * "Odrzucam i chcę dowiedzieć się więcej", only 8.
  */
-const MINIMUM_LABEL_SCORE = 20;
+const MINIMUM_LABEL_SCORE = 5;
 
 /** Score given to a refusal recognised by wording rather than by phrase. */
 const REFUSAL_SCORE = 110;
@@ -135,6 +133,9 @@ export function classifyLabel(label: string): Classification | null {
   // Sign-in, checkout and other flows that must never be pressed on the user's
   // behalf, however cookie-flavoured the page around them is.
   if (matchesAny(raw, NEVER_PHRASES)) return null;
+  if (costsMoney(raw)) return null;
+
+  if (isSlug(raw)) return null;
 
   const variants = labelVariants(raw);
   const text = variants[0]!;
@@ -168,6 +169,32 @@ export function classifyLabel(label: string): Classification | null {
   if (accept > 0 && accept >= settings) return build('accept', accept);
   if (settings > 0) return build('settings', settings);
   return null;
+}
+
+/** A price, as written on a button: "9€/mes", "€ 4,99", "$5 a month". */
+const PRICE = /(\d[\d.,]*\s*(€|\$|£|kr|zł|czk|pln|eur|usd|gbp))|((€|\$|£)\s*\d)/i;
+
+/**
+ * True when pressing this would start a purchase rather than answer a notice.
+ *
+ * "Pay or consent" walls put the refusal behind a subscription, so the button
+ * that reads like a refusal — publico.es's "Rechaza y suscríbete por 9€/mes" —
+ * is really a checkout. Those are left for the user to press themselves.
+ */
+function costsMoney(label: string): boolean {
+  return PRICE.test(label) || matchesAny(label, SUBSCRIPTION_WORDS);
+}
+
+/**
+ * True for an identifier rather than something written for a reader:
+ * several words with no spaces between them, as in a slug or a file name.
+ *
+ * This is what offered GitHub's own repository link,
+ * "chrome-cookie-consent-dismisser", as an accept button — it contains the
+ * word "consent". No button anyone writes for a person looks like this.
+ */
+function isSlug(label: string): boolean {
+  return !/\s/.test(label.trim()) && tokenize(normalize(label)).length >= 3;
 }
 
 /**
@@ -434,6 +461,8 @@ export interface ConfidenceContext {
   hasSibling?: boolean;
   /** The page is scroll-locked, the way a consent wall locks it. */
   scrollLocked?: boolean;
+  /** The control's own label names cookies or consent. */
+  labelNamesConsent?: boolean;
 }
 
 export function scoreConfidence(
@@ -448,6 +477,10 @@ export function scoreConfidence(
   if (hasConsentSignatureNearby(container.element)) confidence += 2;
   if (classification.exact) confidence += 2;
   if (!classification.generic) confidence += 1;
+
+  // A control that says "cookies" or "consent" in its own label is talking
+  // about exactly one thing: rp-online.de's "Consent akzeptieren und weiter".
+  if (context.labelNamesConsent) confidence += 1;
 
   const floats = isOverlay(container.element);
   if (floats) confidence += 1;
@@ -505,22 +538,48 @@ export function findCandidates(
   // Which blocks hold more than one kind of consent control — an "accept"
   // beside a "reject" or a "settings" — is only knowable once every candidate
   // in the root has been collected, so confidence is scored in a second pass.
-  const kindsPerContainer = new Map<Element, Set<ButtonKind>>();
-  for (const item of found) {
-    const kinds = kindsPerContainer.get(item.container.element) ?? new Set<ButtonKind>();
-    kinds.add(item.classification.kind);
-    kindsPerContainer.set(item.container.element, kinds);
-  }
+  // Two controls count as neighbours when their blocks are the same one or one
+  // contains the other: the buttons of a single banner often resolve to
+  // different levels of the same nesting.
+  const kindsAround = (item: RawCandidate): Set<ButtonKind> => {
+    const here = item.container.element;
+    const kinds = new Set<ButtonKind>();
+    for (const other of found) {
+      const there = other.container.element;
+      if (there === here || there.contains(here) || here.contains(there)) {
+        kinds.add(other.classification.kind);
+      }
+    }
+    return kinds;
+  };
 
   const doc = root instanceof Document ? root : root.ownerDocument;
   const scrollLocked = doc ? isScrollLocked(doc) : false;
   const candidates: Candidate[] = [];
 
   for (const item of found) {
-    const kinds = kindsPerContainer.get(item.container.element);
+    const kinds = kindsAround(item);
+    const kind = item.classification.kind;
+
+    // A lone "Settings" or "Save" control is just that — a settings button.
+    // Only next to an accept or a reject does it belong to a consent block:
+    // welt.de's "Einstellungen für Barrierefreiheit" (accessibility settings)
+    // and tagesschau.de's settings link were both offered as consent controls.
+    // A pane that names a CMP in its attributes is exempt, because a
+    // preferences pane legitimately holds nothing but "Save".
+    if (kind === 'settings' || kind === 'save') {
+      const beside = kinds.has('accept') || kinds.has('reject');
+      const named = hasConsentSignatureNearby(item.container.element);
+      // welt.de's "Einstellungen für Barrierefreiheit" — accessibility
+      // settings, in the page header — passed both of those on the strength of
+      // a neighbouring class name. A preferences pane always says what it is.
+      if (item.container.strength !== 'strong' || !(beside || named)) continue;
+    }
+
     const confidence = scoreConfidence(item.classification, item.container, {
-      hasSibling: (kinds?.size ?? 0) > 1,
+      hasSibling: kinds.size > 1,
       scrollLocked,
+      labelNamesConsent: evaluateContext(item.label) === 'strong',
     });
     if (confidence < MINIMUM_THRESHOLD) continue;
 

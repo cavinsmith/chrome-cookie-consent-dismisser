@@ -38,6 +38,11 @@ export function normalize(input: string): string {
     .trim();
 }
 
+/** Phrases this short are matched almost exactly; see `scorePhrases`. */
+const SHORT_PHRASE_LEN = 3;
+/** …meaning the label may be at most this many words long. */
+const SHORT_PHRASE_CONTEXT = 2;
+
 /** Normalised text split into word tokens. */
 export function tokenize(normalized: string): string[] {
   return normalized ? normalized.split(' ') : [];
@@ -94,6 +99,12 @@ export function scorePhrases(text: string, phrases: readonly string[]): number {
 
     if (nText === nPhrase) {
       best = Math.max(best, 100 + nPhrase.length);
+      continue;
+    }
+    // A two- or three-letter word ("no", "ja", "ne") means what the table says
+    // only when it is essentially the whole label. Inside a sentence it is
+    // almost always another language's ordinary word.
+    if (nPhrase.length <= SHORT_PHRASE_LEN && tokenize(nText).length > SHORT_PHRASE_CONTEXT) {
       continue;
     }
     if (containsPhrase(nText, nPhrase)) {

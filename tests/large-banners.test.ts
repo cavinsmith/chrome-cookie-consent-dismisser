@@ -402,3 +402,52 @@ describe('allegro.pl (a refusal that contains the acceptance)', () => {
     expect(clicked).toBe('accept');
   });
 });
+
+describe('pay-or-consent walls', () => {
+  it('never presses a button that starts a subscription', () => {
+    // publico.es and corriere.it put the refusal behind a paid subscription.
+    expect(classifyLabel('Rechaza y suscríbete por 9€/mes')).toBeNull();
+    expect(classifyLabel('Rifiuta e abbonati')).toBeNull();
+    expect(classifyLabel('Pur-Abo für 4,99 €')).toBeNull();
+    // The free choice on the same wall is still readable.
+    expect(classifyLabel('Acepta y navega gratis')).toMatchObject({ kind: 'accept' });
+  });
+
+  it('leaves such a wall alone in reject mode rather than buying anything', () => {
+    document.body.innerHTML = `
+      <div class="didomi-popup-backdrop" style="position: fixed">
+        <p>Público te permite navegación gratuita mediante cookies publicitarias.</p>
+        <button id="pay">Rechaza y suscríbete por 9€/mes</button>
+        <button id="free">Acepta y navega gratis</button>
+      </div>`;
+    const clicks = trackClicks();
+
+    expect(new ConsentEngine(document, REJECT).run().action).toBe('none');
+    expect(clicks.clicked).not.toContain('pay');
+    clicks.stop();
+  });
+});
+
+describe('lone settings controls', () => {
+  it('ignores an accessibility settings button in a page header', () => {
+    // welt.de offered "Einstellungen für Barrierefreiheit" as a consent control.
+    document.body.innerHTML = `
+      <header class="r-header">
+        <button id="a11y">Einstellungen für Barrierefreiheit</button>
+        <a href="/datenschutz">Datenschutz</a>
+      </header>`;
+
+    expect(findCandidates(document)).toEqual([]);
+  });
+
+  it('still takes a settings button that sits beside an accept', () => {
+    document.body.innerHTML = `
+      <div class="cookie-bar" style="position: fixed">
+        <p>Wir verwenden Cookies auf dieser Website.</p>
+        <button id="settings">Einstellungen</button>
+        <button id="accept">Alle akzeptieren</button>
+      </div>`;
+
+    expect(findCandidates(document).map((c) => c.kind)).toContain('settings');
+  });
+});
