@@ -18,8 +18,14 @@ banners for you on every site. You pick the answer once — **reject all** or
   Information, Securiti, HubSpot, Moove GDPR, and the Insites CookieConsent
   widget. For these it clicks the exact button, including the reject button
   that a lot of them hide one level down behind "Manage options".
-- **Falls back to a multilingual heuristic** for everything else: ~40 languages
-  of accept/reject/settings/save vocabulary, matched against button labels.
+- **Falls back to a multilingual heuristic** for everything else: 30 languages
+  of accept/reject/settings/save vocabulary — English, Russian, Ukrainian,
+  Belarusian, German, French, Spanish, Catalan, Galician, Italian, Portuguese,
+  Dutch, Swedish, Norwegian, Danish, Finnish, Polish, Czech, Slovak, Slovene,
+  Croatian, Serbian, Hungarian, Romanian, Bulgarian, Greek, Turkish,
+  Lithuanian, Latvian, Estonian, Hebrew, Arabic, Persian, Japanese, Chinese
+  (Simplified and Traditional), Korean, Indonesian, Vietnamese, Thai, and Hindi —
+  matched against button labels.
 - **Preference-pane fallback.** When a banner offers no reject button at all,
   reject mode opens the preferences pane, switches every optional category off
   — never the "strictly necessary" one — and saves.
