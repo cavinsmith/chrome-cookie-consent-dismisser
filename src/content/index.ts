@@ -66,7 +66,20 @@ function scheduleSweeps(): void {
   }
 }
 
+/**
+ * Takes the prompt off the screen and un-pauses the engine. Every path out of
+ * the prompt must go through here: leaving `pendingPrompt` set would freeze
+ * `tick` for the rest of the page's life, and leaving the host element in the
+ * DOM would keep its backdrop over the page.
+ */
+function closePrompt(): void {
+  dismissConfirmPrompt();
+  pendingPrompt = null;
+  state.asking = false;
+}
+
 function onUserDecision(pending: PendingAction, always: boolean): void {
+  closePrompt();
   if (always) {
     chrome.runtime
       .sendMessage({ type: 'remember-choice', choice: 'act' })
@@ -77,9 +90,12 @@ function onUserDecision(pending: PendingAction, always: boolean): void {
     report(result.action, result.ruleId ?? 'heuristic', result.label ?? '');
     scheduleSweeps();
   }
+  // The click may reveal a second-level pane, so keep watching for a while.
+  startObserving();
 }
 
 function onUserDismiss(pending: PendingAction): void {
+  closePrompt();
   engine?.dismissPending(pending);
 }
 
@@ -100,11 +116,7 @@ function tick(): void {
   if (result.action === 'ask' && result.pending) {
     pendingPrompt = result.pending;
     state.asking = true;
-    showConfirmPrompt(result.pending, onUserDecision, (p) => {
-      onUserDismiss(p);
-      pendingPrompt = null;
-      state.asking = false;
-    });
+    showConfirmPrompt(result.pending, onUserDecision, onUserDismiss);
     return;
   }
 

@@ -106,6 +106,54 @@ export function scorePhrases(text: string, phrases: readonly string[]): number {
   return best;
 }
 
+/**
+ * How many times any of `phrases` occurs in `text`, counted as whole-word runs
+ * (substrings for CJK) and capped at `max` so a long document costs no more
+ * than a short one. Used to tell a block that is *about* cookies from one that
+ * merely mentions them once.
+ */
+export function countPhraseHits(text: string, phrases: readonly string[], max = 10): number {
+  const nText = normalize(text);
+  if (!nText || max <= 0) return 0;
+
+  const words = tokenize(nText);
+  const needles: string[][] = [];
+  let hits = 0;
+
+  for (const phrase of phrases) {
+    const nPhrase = normalize(phrase);
+    if (!nPhrase) continue;
+    if (isCjk(nPhrase)) {
+      const haystack = nText.replace(/ /g, '');
+      const needle = nPhrase.replace(/ /g, '');
+      hits += needle ? haystack.split(needle).length - 1 : 0;
+      if (hits >= max) return max;
+      continue;
+    }
+    needles.push(tokenize(nPhrase));
+  }
+
+  outer: for (let i = 0; i < words.length; i++) {
+    for (const needle of needles) {
+      if (i + needle.length > words.length) continue;
+      let matched = true;
+      for (let j = 0; j < needle.length; j++) {
+        if (words[i + j] !== needle[j]) {
+          matched = false;
+          break;
+        }
+      }
+      if (!matched) continue;
+      hits++;
+      if (hits >= max) break outer;
+      // Do not count the same run twice under a longer phrase.
+      i += needle.length - 1;
+      continue outer;
+    }
+  }
+  return Math.min(hits, max);
+}
+
 /** True when any phrase matches at all. */
 export function matchesAny(text: string, phrases: readonly string[]): boolean {
   return scorePhrases(text, phrases) > 0;

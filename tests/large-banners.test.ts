@@ -1,0 +1,275 @@
+/**
+ * Banners whose text is too long for the old container-size gate.
+ *
+ * Every site in this file was reported as "the extension does nothing":
+ * detection classified the buttons correctly, but `findConsentContainer`
+ * refused to credit any ancestor because the banner's own copy exceeded the
+ * 4 000-character limit, so no candidate survived. The fixtures reproduce the
+ * real DOM shapes and sizes measured on those pages.
+ */
+import { beforeEach, describe, expect, it } from 'vitest';
+import { ConsentEngine } from '../src/core/engine.js';
+import { findCandidates } from '../src/core/detect.js';
+import { visibleText } from '../src/core/dom.js';
+import { classifyLabel } from '../src/core/detect.js';
+import { trackClicks } from './helpers.js';
+
+const REJECT = {
+  mode: 'reject' as const,
+  fallbackToOpposite: false,
+  hideIfNoButton: false,
+  unblockScroll: false,
+};
+const ACCEPT = { ...REJECT, mode: 'accept' as const };
+
+/** Filler with the same cookie vocabulary and bulk as a real category list. */
+function categories(chars: number): string {
+  const one =
+    '<p>These cookies are used to send advertising and promotional information ' +
+    'that is relevant to your interests, and to measure the performance of our ' +
+    'campaigns. Some cookies may be processed by third parties.</p>';
+  return one.repeat(Math.ceil(chars / 180));
+}
+
+beforeEach(() => {
+  document.body.innerHTML = '';
+});
+
+/**
+ * Mounts `html` inside a same-origin iframe and returns its document — the
+ * shape an iframe-hosted CMP actually has, where the frame itself is the
+ * overlay and its wrappers are plain unnamed `<div>`s.
+ */
+function mountInFrame(html: string): Document {
+  const frame = document.createElement('iframe');
+  document.body.append(frame);
+  const doc = frame.contentDocument!;
+  doc.body.innerHTML = html;
+  return doc;
+}
+
+describe('fiat.com / media.stellantis.com (FCA CookieLaw, ~4.9k of text)', () => {
+  /** Nested wrappers, none of which name a consent widget in its attributes. */
+  const html = `
+    <div class="content-wrapper">
+      <div class="modal-parent"><div class="modal">
+        <div id="dashboard" class="dashboard modal-page">
+          <div class="inner-content-wrapper">
+            <div class="decline-link"><button id="decline-text" class="as-link">CONTINUE WITHOUT ACCEPTING</button></div>
+            <div id="dashboard-body-container" class="body-container">
+              <h1>We use website cookies</h1>
+              <p>We use cookies to ensure that we give you the best experience on our website.</p>
+              ${categories(4500)}
+              <div class="list-buttons">
+                <button class="button-manage">MANAGE MY SETTINGS</button>
+                <button class="button-custom">SAVE MY SETTINGS</button>
+                <button id="acceptAllBtn" class="button-manage">ACCEPT ALL</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>`;
+
+  it('clicks "Continue without accepting" in reject mode', () => {
+    const doc = mountInFrame(html);
+    let clicked = '';
+    doc.getElementById('decline-text')!.addEventListener('click', () => (clicked = 'decline'));
+
+    const result = new ConsentEngine(doc, REJECT).run();
+
+    expect(result.action).toBe('clicked');
+    expect(result.label).toBe('CONTINUE WITHOUT ACCEPTING');
+    expect(clicked).toBe('decline');
+  });
+
+  it('clicks "Accept all" in accept mode', () => {
+    const doc = mountInFrame(html);
+
+    const result = new ConsentEngine(doc, ACCEPT).run();
+
+    expect(result.action).toBe('clicked');
+    expect(result.label).toBe('ACCEPT ALL');
+  });
+
+  it('is still ignored when the same markup is the whole page, not a frame', () => {
+    // A top-level document gets no frame allowance: an unnamed, non-floating
+    // block that long is not credited on its wording alone.
+    document.body.innerHTML = html;
+    expect(new ConsentEngine(document, REJECT).run().action).toBe('none');
+  });
+
+  it('does not treat "Continue without accepting" as a generic label', () => {
+    // It contains the generic word "continue", which used to cost it a point
+    // of confidence and force a prompt.
+    expect(classifyLabel('CONTINUE WITHOUT ACCEPTING')).toMatchObject({
+      kind: 'reject',
+      generic: false,
+    });
+  });
+});
+
+describe('privatelease.fiat.nl (same CMP, Dutch)', () => {
+  it('reads "Ga verder zonder aanvaarden" as reject and "Alles aanvaarden" as accept', () => {
+    expect(classifyLabel('GA VERDER ZONDER AANVAARDEN →')).toMatchObject({ kind: 'reject' });
+    expect(classifyLabel('ALLES AANVAARDEN')).toMatchObject({ kind: 'accept' });
+  });
+});
+
+describe('gaspedaal.nl (4 052 characters — fifty over the old limit)', () => {
+  it('accepts through the named consent popup', () => {
+    document.body.innerHTML = `
+      <div>
+        <div id="as24-cmp-popup" class="_consent-popup_lzbp7_1" style="position: fixed">
+          <div class="_consent-popup-inner_lzbp7_21">
+            <h2>Wij gebruiken cookies</h2>
+            ${categories(3900)}
+            <div class="_acceptance-buttons_lzbp7_85">
+              <button class="_consent-settings_lzbp7_103">Privacy instellingen</button>
+              <button id="accept-all" class="_consent-accept_lzbp7_114">Alles accepteren</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    const result = new ConsentEngine(document, ACCEPT).run();
+
+    expect(result.action).toBe('clicked');
+    expect(result.label).toBe('Alles accepteren');
+  });
+});
+
+describe('fiatcanada.com (OneTrust preferences pane, no "reject all")', () => {
+  it('switches the optional categories off and saves', () => {
+    document.body.innerHTML = `
+      <div id="onetrust-consent-sdk">
+        <div id="onetrust-pc-sdk" class="ot-pc-sdk" style="position: fixed">
+          <h2>Privacy Preference Centre</h2>
+          <p>When you visit our website, it may store or retrieve information on your
+             browser in the form of cookies. Read our Cookie Notice for more information.</p>
+          ${categories(9000)}
+          <label for="c1">Strictly Necessary Cookies</label>
+          <input id="c1" type="checkbox" checked disabled>
+          <label for="c2">Functional Cookies</label>
+          <input id="c2" type="checkbox" checked>
+          <label for="c3">Performance Cookies</label>
+          <input id="c3" type="checkbox" checked>
+          <label for="c4">Targeting Cookies</label>
+          <input id="c4" type="checkbox" checked>
+          <button id="save" class="save-preference-btn-handler">Confirm My Choices</button>
+        </div>
+      </div>`;
+    const clicks = trackClicks();
+
+    const result = new ConsentEngine(document, REJECT).run();
+
+    expect(result.action).toBe('clicked');
+    expect(clicks.clicked).toContain('save');
+    // The necessary category is left alone; the optional ones are switched off.
+    expect((document.getElementById('c1') as HTMLInputElement).checked).toBe(true);
+    for (const id of ['c2', 'c3', 'c4']) {
+      expect((document.getElementById(id) as HTMLInputElement).checked).toBe(false);
+    }
+    clicks.stop();
+  });
+});
+
+describe('the raised limit does not open the door to false positives', () => {
+  it('ignores an "OK" button on a page whose footer links a cookie policy', () => {
+    document.body.innerHTML = `
+      <div id="page">
+        <h1>Order summary</h1>
+        <p>${'Your order has been prepared and is ready for collection. '.repeat(60)}</p>
+        <button id="ok">OK</button>
+        <footer><a href="/cookies">Cookie policy</a> — we use cookies on this site.</footer>
+      </div>`;
+
+    expect(findCandidates(document)).toEqual([]);
+    expect(new ConsentEngine(document, REJECT).run().action).toBe('none');
+  });
+});
+
+describe('visibleText', () => {
+  it('ignores inline script and style payloads', () => {
+    // The real FCA frame ships an 850 000-character configuration blob this
+    // way, which made every ancestor look far too large to be a banner.
+    document.body.innerHTML = `
+      <div id="banner">
+        <script>const config = "${'x'.repeat(5000)}";</script>
+        <style>.a { color: red }</style>
+        <p>We use cookies.</p>
+      </div>`;
+
+    expect(visibleText(document.getElementById('banner')!).trim()).toBe('We use cookies.');
+  });
+
+  it('stops reading at the cap', () => {
+    document.body.innerHTML = `<div id="long">${'a'.repeat(5000)}</div>`;
+    expect(visibleText(document.getElementById('long')!, 100)).toHaveLength(100);
+  });
+});
+
+describe('lynkco.com (Dutch imperatives, and a footer that looked like a button)', () => {
+  /** The real shape: nested spans inside the button, wrapped in a "buttonBox". */
+  const banner = `
+    <div class="cookie-panel" style="position: fixed">
+      <h2>Deze website maakt gebruik van cookies</h2>
+      <p>Als je daarvoor toestemming geeft, gebruiken wij en derden cookies en
+         soortgelijke technologieën om onze diensten te verbeteren.
+         Meer hierover lees je in ons <a href="/privacy">privacybeleid</a> en
+         <a href="/cookies">cookiebeleid</a>.</p>
+      <div class="buttonBox">
+        <button id="accept-all" class="primary-button dark-green">
+          <span class="primary-button__content"><span class="buttonText">Accepteer alle cookies</span></span>
+        </button>
+        <button id="reject-all" class="primary-button outline-black">
+          <span class="primary-button__content"><span class="buttonText">Weiger alle onnodige cookies</span></span>
+        </button>
+        <button id="customise" class="primary-button outline-black">
+          <span class="buttonText">Cookies aanpassen</span>
+        </button>
+      </div>
+    </div>`;
+
+  it('refuses the unnecessary cookies in reject mode', () => {
+    document.body.innerHTML = banner;
+    let clicked = '';
+    for (const id of ['accept-all', 'reject-all', 'customise']) {
+      document.getElementById(id)!.addEventListener('click', () => (clicked = id));
+    }
+
+    const result = new ConsentEngine(document, REJECT).run();
+
+    expect(result.action).toBe('clicked');
+    expect(clicked).toBe('reject-all');
+  });
+
+  it('accepts in accept mode', () => {
+    document.body.innerHTML = banner;
+    let clicked = '';
+    for (const id of ['accept-all', 'reject-all']) {
+      document.getElementById(id)!.addEventListener('click', () => (clicked = id));
+    }
+
+    expect(new ConsentEngine(document, ACCEPT).run().action).toBe('clicked');
+    expect(clicked).toBe('accept-all');
+  });
+
+  it('does not offer a footer full of links as one button', () => {
+    // What the prompt actually asked about on this site: a wrapper whose label
+    // was every link's text concatenated, inside a footer carrying an inline
+    // SVG stylesheet.
+    document.body.innerHTML = `
+      <footer class="site-footer">
+        <style>.st0{clip-path:url(#SVGID_1_);}</style>
+        <div class="footer-buttons">
+          <a href="/terms">Voorwaarden en beleid</a>
+          <a href="/cookies">Cookiebeleid</a>
+          <a href="/privacy">Privacybeleid</a>
+        </div>
+      </footer>`;
+
+    const labels = findCandidates(document).map((c) => c.label);
+    expect(labels.some((l) => l.includes('Voorwaarden en beleid Voorwaarden'))).toBe(false);
+  });
+});
