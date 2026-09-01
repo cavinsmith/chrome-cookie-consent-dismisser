@@ -45,6 +45,8 @@ export interface EngineOptions {
   maxActions?: number;
   /** Upper bound on prompts per page, so the user is never spammed. */
   maxPrompts?: number;
+  /** How long a buttonless banner must persist before it is hidden. */
+  hideGraceMs?: number;
 }
 
 export interface EngineResult {
@@ -65,6 +67,14 @@ const NONE: EngineResult = { action: 'none' };
 
 /** How far above a clicked control a leftover overlay is still swept. */
 const LEFTOVER_WALK = 6;
+/**
+ * How long a banner must sit there with no usable button before it is hidden
+ * outright. Hiding is the last resort — it removes the notice without
+ * answering it — and CMPs like Didomi paint their buttons a beat after the
+ * text, so without this grace period the hide wins the race against the click
+ * that should have happened.
+ */
+const ORPHAN_GRACE_MS = 1500;
 
 export class ConsentEngine {
   private readonly doc: Document;
@@ -73,6 +83,7 @@ export class ConsentEngine {
     maxActions: number;
     maxPrompts: number;
     uncertain: UncertainPolicy;
+    hideGraceMs: number;
   };
   /** Rules whose "open settings" step was already used. */
   private readonly settingsTried = new Set<string>();
@@ -82,6 +93,8 @@ export class ConsentEngine {
   private prompts = 0;
   /** Elements the user has already been asked about, or has declined. */
   private readonly asked = new WeakSet<Element>();
+  /** When a buttonless banner was first seen, for the hide grace period. */
+  private readonly orphanSeen = new WeakMap<Element, number>();
   /** Rules that produced a click, so their leftovers can be swept later. */
   private readonly firedRules = new Set<string>();
   /**
@@ -99,6 +112,7 @@ export class ConsentEngine {
       maxActions: options.maxActions ?? 6,
       maxPrompts: options.maxPrompts ?? 2,
       uncertain: options.uncertain ?? 'ask',
+      hideGraceMs: options.hideGraceMs ?? ORPHAN_GRACE_MS,
     };
   }
 
@@ -397,6 +411,17 @@ export class ConsentEngine {
     for (const root of roots) {
       for (const el of findOrphanBanners(root)) {
         if (this.hidden.has(el) || this.asked.has(el)) continue;
+
+        // Give a slow CMP time to paint the buttons this pass could not find.
+        if (this.opts.hideGraceMs > 0) {
+          const now = Date.now();
+          const firstSeen = this.orphanSeen.get(el);
+          if (firstSeen === undefined) {
+            this.orphanSeen.set(el, now);
+            continue;
+          }
+          if (now - firstSeen < this.opts.hideGraceMs) continue;
+        }
 
         // Orphan hiding is the riskiest action in the extension — there is no
         // button to confirm intent — so it is only ever automatic when the

@@ -358,3 +358,47 @@ describe('corriere.it (the CMP empties its wall but leaves it up)', () => {
     expect((document.getElementById('loader') as HTMLElement).style.display).toBe('');
   });
 });
+
+describe('allegro.pl (a refusal that contains the acceptance)', () => {
+  it('reads "Nie zgadzam się" as a refusal, not as "Zgadzam się"', () => {
+    expect(classifyLabel('Nie zgadzam się')).toMatchObject({ kind: 'reject' });
+    expect(classifyLabel('Zgadzam się')).toMatchObject({ kind: 'accept' });
+  });
+
+  it('presses the refuse button on the real banner shape', () => {
+    document.body.innerHTML = `
+      <div id="opbox-gdpr-consents-modal">
+        <div style="position: fixed">
+          <h2>Dbamy o Twoją prywatność</h2>
+          <p>Dzięki plikom cookies i technologiom pokrewnym oraz przetwarzaniu
+             Twoich danych osobowych możemy lepiej dopasować treści.</p>
+          <a href="/cookies" data-role="manage_home_view_link">Ustawienia plików cookies</a>
+          <button id="accept" data-role="accept-consent">Zgadzam się</button>
+          <button id="reject" data-role="reject-rodo">Nie zgadzam się</button>
+        </div>
+      </div>`;
+    let clicked = '';
+    for (const id of ['accept', 'reject']) {
+      document.getElementById(id)!.addEventListener('click', () => (clicked = id));
+    }
+
+    expect(new ConsentEngine(document, REJECT).run().action).toBe('clicked');
+    expect(clicked).toBe('reject');
+  });
+
+  it('still presses accept in accept mode', () => {
+    document.body.innerHTML = `
+      <div class="cookie-modal" style="position: fixed">
+        <p>Dzięki plikom cookies możemy lepiej dopasować treści.</p>
+        <button id="accept">Zgadzam się</button>
+        <button id="reject">Nie zgadzam się</button>
+      </div>`;
+    let clicked = '';
+    for (const id of ['accept', 'reject']) {
+      document.getElementById(id)!.addEventListener('click', () => (clicked = id));
+    }
+
+    new ConsentEngine(document, ACCEPT).run();
+    expect(clicked).toBe('accept');
+  });
+});

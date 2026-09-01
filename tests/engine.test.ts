@@ -10,7 +10,10 @@ const OPTS: EngineOptions = {
 };
 
 function engine(overrides: Partial<EngineOptions> = {}): ConsentEngine {
-  return new ConsentEngine(document, { ...OPTS, ...overrides });
+  // `hideGraceMs: 0` keeps these single-pass: in a browser the engine waits a
+  // beat before hiding a buttonless banner, in case the CMP is still painting
+  // the button it should press instead. That wait has its own test below.
+  return new ConsentEngine(document, { hideGraceMs: 0, ...OPTS, ...overrides });
 }
 
 beforeEach(() => {
@@ -338,6 +341,40 @@ describe('cosmetic hiding', () => {
 
     expect(result.action).toBe('hidden');
     expect(document.getElementById('cookie-wall')!.style.display).toBe('none');
+  });
+
+  it('waits before hiding, in case the banner is still painting its buttons', () => {
+    mountHtml(`
+      <div id="cookie-wall" style="position:fixed"><p>We use cookies and similar technologies on this site.</p></div>`);
+    const instance = new ConsentEngine(document, { ...OPTS, hideIfNoButton: true, hideGraceMs: 20 });
+
+    // First sight: leave it alone, a reject button may still arrive.
+    expect(instance.run().action).toBe('none');
+    expect(document.getElementById('cookie-wall')!.style.display).toBe('');
+
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        expect(instance.run().action).toBe('hidden');
+        expect(document.getElementById('cookie-wall')!.style.display).toBe('none');
+        resolve();
+      }, 30);
+    });
+  });
+
+  it('presses a button that arrives during the wait instead of hiding', () => {
+    mountHtml(`
+      <div id="cookie-wall" style="position:fixed"><p>We use cookies and similar technologies on this site.</p></div>`);
+    const instance = new ConsentEngine(document, { ...OPTS, hideIfNoButton: true, hideGraceMs: 20 });
+    instance.run();
+
+    document.getElementById('cookie-wall')!.insertAdjacentHTML(
+      'beforeend',
+      '<button id="reject">Reject all cookies</button>',
+    );
+
+    const result = instance.run();
+    expect(result.action).toBe('clicked');
+    expect(document.getElementById('cookie-wall')!.style.display).toBe('');
   });
 
   it('does nothing when hiding is disabled', () => {

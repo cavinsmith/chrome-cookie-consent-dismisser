@@ -22,6 +22,7 @@ import {
   CONSENT_ID_HINTS,
   GENERIC_ACCEPT_PHRASES,
   LABEL_FILLER_WORDS,
+  NEGATION_WORDS,
   NEVER_PHRASES,
   REJECT_PHRASES,
   ACCEPT_PHRASES,
@@ -202,11 +203,19 @@ function labelVariants(label: string): string[] {
  */
 function refusesByWording(text: string): boolean {
   const words = tokenize(normalize(text));
+
   for (let i = 0; i < words.length - 1; i++) {
     if (!WITHOUT_WORDS.includes(words[i]!)) continue;
     if (scorePhrases(words.slice(i + 1).join(' '), ACCEPT_PHRASES) > 0) return true;
   }
-  return false;
+
+  // "Nie zgadzam się" is "zgadzam się" with a "nie" in front, and allegro.pl's
+  // refuse button was read as its accept button because of it. Take the
+  // negation out: if what is left accepts, the button refuses.
+  const negated = words.filter((word) => NEGATION_WORDS.includes(word));
+  if (negated.length === 0 || negated.length === words.length) return false;
+  const rest = words.filter((word) => !NEGATION_WORDS.includes(word));
+  return scorePhrases(rest.join(' '), ACCEPT_PHRASES) > 0;
 }
 
 /**

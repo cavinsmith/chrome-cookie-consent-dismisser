@@ -428,6 +428,26 @@ export const WITHOUT_WORDS: readonly string[] = [
   'なしで', '不接受', '不同意', '동의하지',
 ];
 
+/**
+ * "Not", in the languages the phrase tables cover.
+ *
+ * A refusal is very often the acceptance with a negation dropped in the middle
+ * — "Nie zgadzam się", "Ich stimme nicht zu", "Non accetto" — and the accept
+ * vocabulary matches those happily. `classifyLabel` takes the negation out and
+ * checks whether what is left is an acceptance; if it is, the button refuses.
+ */
+export const NEGATION_WORDS: readonly string[] = [
+  'not', 'dont', 'never', 'no',
+  'niet', 'geen', 'nee',
+  'nicht', 'kein', 'keine', 'nein',
+  'non', 'pas', 'ne', 'aucun',
+  'nao', 'ningun', 'ninguna', 'nessun',
+  'nie', 'nej', 'inte', 'inga', 'inget', 'ikke', 'ei', 'ala',
+  'nem', 'nu', 'nav', 'nie zgadzam',
+  'не', 'нет', 'ні', 'нi',
+  'δεν', 'οχι', 'degil', 'hayir', 'לא', 'لا', 'いいえ', '不', '아니요',
+];
+
 export const SETTINGS_PHRASES: readonly string[] = [
   'cookie settings', 'cookie preferences', 'manage cookies', 'manage settings',
   'manage preferences', 'manage options', 'manage choices', 'more options', 'options',
