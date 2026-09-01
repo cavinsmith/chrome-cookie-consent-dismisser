@@ -72,6 +72,17 @@ export interface Candidate {
 export const CONFIDENT_THRESHOLD = 6;
 /** Below this a candidate is discarded rather than queried. */
 export const MINIMUM_THRESHOLD = 3;
+/**
+ * The weakest label match still worth considering.
+ *
+ * `scorePhrases` pays a phrase's length and penalises every extra word around
+ * it, so a short consent word buried in unrelated text lands here: GitHub's
+ * own repository link, "chrome-cookie-consent-dismisser", scored 15 on the
+ * word "consent" and was offered as an accept button. A real button clears
+ * this easily — an exact match scores over 100, and "Cookies aanpassen"
+ * (settings) scores 25.
+ */
+const MINIMUM_LABEL_SCORE = 20;
 
 /** Longest label still plausible for a button rather than a paragraph. */
 const MAX_LABEL_LEN = 120;
@@ -334,6 +345,7 @@ export function findCandidates(
     const label = elementLabel(button);
     const classified = classifyLabel(label);
     if (!classified) continue;
+    if (classified.score < MINIMUM_LABEL_SCORE) continue;
 
     const container = findConsentContainer(button);
     if (!container) continue;

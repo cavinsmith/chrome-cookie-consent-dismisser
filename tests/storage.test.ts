@@ -7,9 +7,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   loadSettings,
   loadStats,
+  resolveConfig,
   saveSettings,
   saveStats,
+  setSiteOverride,
 } from '../src/common/settings.js';
+import { ConsentEngine } from '../src/core/engine.js';
 import { DEFAULT_SETTINGS, DEFAULT_STATS } from '../src/common/types.js';
 
 function fakeArea(): chrome.storage.StorageArea & { data: Record<string, unknown> } {
@@ -70,5 +73,53 @@ describe('stats storage', () => {
   it('recovers from a corrupted stats record', async () => {
     local.data['stats'] = { handled: 'lots', byHost: null };
     await expect(loadStats()).resolves.toEqual(DEFAULT_STATS);
+  });
+});
+
+/**
+ * "Always do this on this site": the answer has to survive a reload, or the
+ * prompt asks the same question on every visit.
+ */
+describe('a remembered answer to the prompt', () => {
+  it('survives a reload and stops the prompt coming back', async () => {
+    await saveSettings(DEFAULT_SETTINGS);
+
+    // What the service worker does with a `remember-choice` message.
+    const settings = await loadSettings();
+    await saveSettings(setSiteOverride(settings, 'https://www.example.com/page?x=1', {
+      uncertain: 'act',
+    }));
+
+    // What the content script asks for on the next page load.
+    const reloaded = await loadSettings();
+    expect(resolveConfig(reloaded, 'https://www.example.com/other').uncertain).toBe('act');
+    // The site key ignores `www.` and the path, so subpages count as the site.
+    expect(resolveConfig(reloaded, 'https://example.com/').uncertain).toBe('act');
+    // Other sites keep asking.
+    expect(resolveConfig(reloaded, 'https://elsewhere.test/').uncertain).toBe('ask');
+  });
+
+  it('is what the engine then runs on: it acts instead of asking', async () => {
+    await saveSettings(setSiteOverride(await loadSettings(), 'example.com', { uncertain: 'act' }));
+    const config = resolveConfig(await loadSettings(), 'https://example.com/');
+
+    document.body.innerHTML = `
+      <div style="position: fixed; z-index: 9999">
+        <p>Manage your privacy and tracking preferences for this site.</p>
+        <button id="accept">Accept all</button>
+      </div>`;
+    let clicked = false;
+    document.getElementById('accept')!.addEventListener('click', () => (clicked = true));
+
+    const result = new ConsentEngine(document, {
+      mode: config.mode === 'accept' ? 'accept' : 'reject',
+      fallbackToOpposite: true,
+      hideIfNoButton: config.hideIfNoButton,
+      unblockScroll: config.unblockScroll,
+      uncertain: config.uncertain,
+    }).run();
+
+    expect(result.action).toBe('clicked');
+    expect(clicked).toBe(true);
   });
 });

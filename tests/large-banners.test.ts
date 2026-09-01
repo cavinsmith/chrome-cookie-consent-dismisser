@@ -273,3 +273,27 @@ describe('lynkco.com (Dutch imperatives, and a footer that looked like a button)
     expect(labels.some((l) => l.includes('Voorwaarden en beleid Voorwaarden'))).toBe(false);
   });
 });
+
+describe('github.com (its own repository link is not an accept button)', () => {
+  it('ignores a link that merely contains the word "consent"', () => {
+    document.body.innerHTML = `
+      <div class="repo-page">
+        <a href="/user/chrome-cookie-consent-dismisser">chrome-cookie-consent-dismisser</a>
+        <p>Chrome extension that automatically accepts or rejects cookie-consent
+           banners on every site.</p>
+        <div class="upload-area">Drag files here or click to add files</div>
+      </div>`;
+
+    expect(findCandidates(document)).toEqual([]);
+  });
+
+  it('still recognises a real button that contains a phrase', () => {
+    document.body.innerHTML = `
+      <div class="cookie-banner" style="position: fixed">
+        <p>We use cookies to improve this site.</p>
+        <button id="ok">Accept all cookies and continue</button>
+      </div>`;
+
+    expect(findCandidates(document).map((c) => c.kind)).toContain('accept');
+  });
+});

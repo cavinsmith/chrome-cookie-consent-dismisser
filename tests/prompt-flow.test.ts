@@ -39,6 +39,11 @@ function installChrome(): void {
   });
 }
 
+/** The "Always do this on this site" toggle. */
+function alwaysToggle(): HTMLElement {
+  return promptShadow()!.querySelector('[role="checkbox"]') as HTMLElement;
+}
+
 /** The prompt's shadow root, or null when no prompt is on screen. */
 function promptShadow(): ShadowRoot | null {
   return document.querySelector('[data-cbac-ui]')?.shadowRoot ?? null;
@@ -113,14 +118,23 @@ describe('confirmation prompt', () => {
     promptButton('Leave it').click();
   });
 
-  it('remembers the site choice only when the box is ticked', async () => {
+  it('remembers the site choice when the box is ticked', async () => {
     await bootAndAsk();
-    const always = promptShadow()!.querySelector('input[type="checkbox"]') as HTMLInputElement;
-    always.checked = true;
+    const always = alwaysToggle();
+
+    always.click();
+    promptButton('Close banner').click();
+
+    expect(always.getAttribute('aria-checked')).toBe('true');
+    expect(sent).toContainEqual({ type: 'remember-choice', choice: 'act' });
+  });
+
+  it('remembers nothing when the box is left alone', async () => {
+    await bootAndAsk();
 
     promptButton('Close banner').click();
 
-    expect(sent).toContainEqual({ type: 'remember-choice', choice: 'act' });
+    expect(sent).not.toContainEqual({ type: 'remember-choice', choice: 'act' });
   });
 });
 
@@ -191,16 +205,27 @@ describe('a page that swallows clicks', () => {
     expect(dismissed).toBe(1);
   });
 
-  it('ticks the "always" box itself, since the default toggle is cancelled', () => {
+  it('ticks the box even though the page cancels the click', () => {
     const restore = blockAllClicks();
-    const always = promptShadow()!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    const always = alwaysToggle();
 
     click(always);
     click(promptButton('Close banner'));
     restore();
 
-    expect(always.checked).toBe(true);
+    expect(always.getAttribute('aria-checked')).toBe('true');
     expect(confirmed).toEqual([true]);
+  });
+
+  it('unticks the box on a second click', () => {
+    const always = alwaysToggle();
+
+    click(always);
+    click(always);
+    click(promptButton('Close banner'));
+
+    expect(always.getAttribute('aria-checked')).toBe('false');
+    expect(confirmed).toEqual([false]);
   });
 
   it('does not consume clicks meant for the page', () => {

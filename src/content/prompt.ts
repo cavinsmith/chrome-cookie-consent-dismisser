@@ -50,8 +50,9 @@ interface OpenPrompt {
   backdrop: HTMLElement;
   confirm: HTMLElement;
   cancel: HTMLElement;
-  alwaysRow: HTMLElement;
-  alwaysCheck: HTMLInputElement;
+  /** The "always do this" toggle, and whether it is on. */
+  alwaysToggle: HTMLElement;
+  always: boolean;
   pending: PendingAction;
   onConfirm: (pending: PendingAction, always: boolean) => void;
   onDismiss: (pending: PendingAction) => void;
@@ -105,18 +106,16 @@ function onWindowClick(event: MouseEvent): void {
   const state = open;
   // The page never sees this click, so its listeners cannot cancel it.
   event.stopImmediatePropagation();
+  event.preventDefault();
 
-  if (state.alwaysRow.contains(control)) {
-    // The tick box and its label are left to their own default behaviour —
-    // cancelling the click here would undo the toggle the browser has already
-    // applied.
+  if (state.alwaysToggle.contains(control)) {
+    state.always = !state.always;
+    state.alwaysToggle.setAttribute('aria-checked', String(state.always));
     return;
   }
 
-  event.preventDefault();
-
   if (state.confirm.contains(control)) {
-    const always = state.alwaysCheck.checked;
+    const always = state.always;
     open = null;
     state.onConfirm(state.pending, always);
     return;
@@ -206,8 +205,45 @@ h1 {
 }
 p { margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: #444; }
 @media (prefers-color-scheme: dark) { p { color: #c7ccd4; } }
-.row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 12px; }
-.row input { margin: 0; }
+.always {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 12px;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.box {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border: 1px solid #b9bec7;
+  border-radius: 4px;
+  background: #fff;
+  position: relative;
+}
+.always[aria-checked="true"] .box { background: #2f6fed; border-color: #2f6fed; }
+.always[aria-checked="true"] .box::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+@media (prefers-color-scheme: dark) {
+  .box { background: #1a1d23; border-color: #575d68; }
+  .always[aria-checked="true"] .box { background: #4d83f5; border-color: #4d83f5; }
+}
 .actions { display: flex; gap: 8px; justify-content: flex-end; }
 button {
   font: inherit;
@@ -292,15 +328,19 @@ export function showConfirmPrompt(
   preview.className = 'preview';
   preview.textContent = pending.label ? `Button: “${pending.label}”` : 'No button label detected';
 
-  const alwaysRow = document.createElement('div');
-  alwaysRow.className = 'row';
-  const alwaysCheck = document.createElement('input');
-  alwaysCheck.type = 'checkbox';
-  alwaysCheck.id = 'cbac-always';
-  const alwaysLabel = document.createElement('label');
-  alwaysLabel.htmlFor = 'cbac-always';
-  alwaysLabel.textContent = 'Always do this on this site';
-  alwaysRow.append(alwaysCheck, alwaysLabel);
+  // A button rather than a real checkbox: a page that cancels clicks also
+  // cancels a checkbox's own toggle, so the prompt owns this state outright.
+  const always = document.createElement('button');
+  always.type = 'button';
+  always.className = 'always';
+  always.setAttribute('role', 'checkbox');
+  always.setAttribute('aria-checked', 'false');
+  const box = document.createElement('span');
+  box.className = 'box';
+  box.setAttribute('aria-hidden', 'true');
+  const alwaysText = document.createElement('span');
+  alwaysText.textContent = 'Always do this on this site';
+  always.append(box, alwaysText);
 
   const actions = document.createElement('div');
   actions.className = 'actions';
@@ -313,7 +353,7 @@ export function showConfirmPrompt(
   confirm.textContent = pending.kind === 'click' ? 'Close banner' : 'Hide it';
 
   actions.append(cancel, confirm);
-  card.append(brand, title, body, preview, alwaysRow, actions);
+  card.append(brand, title, body, preview, always, actions);
   shadow.append(style, backdrop, card);
 
   open = {
@@ -322,8 +362,8 @@ export function showConfirmPrompt(
     backdrop,
     confirm,
     cancel,
-    alwaysRow,
-    alwaysCheck,
+    alwaysToggle: always,
+    always: false,
     pending,
     onConfirm,
     onDismiss,
